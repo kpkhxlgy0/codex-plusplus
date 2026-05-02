@@ -31,7 +31,7 @@ Admin acceptance:
    full SHA.
 6. Use immutable screenshot URLs that include the same SHA, for example:
    `https://raw.githubusercontent.com/owner/repo/<sha>/.codexpp-store/screenshots/overview.png`
-7. Merge the registry change to `main`; GitHub Pages publishes it.
+7. Commit the registry change to `gh-pages`; GitHub Pages publishes it.
 
 Install counts are stored in `installCount`. A GitHub Action can refresh this
 from registry-owned release asset download counts without adding a backend.
