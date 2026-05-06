@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-06T05:02:49Z",
+  "generatedAt": "2026-05-06T07:39:27+01:00",
   "entries": [
     {
       "id": "co.bennett.ui-improvements",
@@ -84,6 +84,39 @@
       "approvedCommitSha": "b0398c839a42134d5cb301c432d43a9f13ac22e0",
       "approvedAt": "2026-05-06T05:02:49Z",
       "approvedBy": "bennett"
+    },
+    {
+      "id": "co.bennett.database-explorer",
+      "manifest": {
+        "id": "co.bennett.database-explorer",
+        "name": "Database Explorer",
+        "version": "1.0.0",
+        "githubRepo": "b-nnett/codex-plusplus-database-explorer",
+        "description": "Explore, export, and import Codex's local chat session store.",
+        "author": {
+          "name": "bennett",
+          "url": "https://github.com/b-nnett"
+        },
+        "homepage": "https://github.com/b-nnett/codex-plusplus-database-explorer",
+        "tags": [
+          "database",
+          "chats",
+          "backup",
+          "import",
+          "export"
+        ],
+        "scope": "both",
+        "main": "index.js",
+        "permissions": [
+          "settings"
+        ],
+        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/database-explorer.png"
+      },
+      "repo": "b-nnett/codex-plusplus-database-explorer",
+      "approvedCommitSha": "bcbe40fe9bfd418234225632d49c1f69883088b3",
+      "approvedAt": "2026-05-06T07:39:27+01:00",
+      "approvedBy": "bennett",
+      "screenshots": []
     },
     {
       "id": "co.bennett.codex-tab-switcher",
