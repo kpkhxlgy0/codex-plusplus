@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-07T19:40:45Z",
+  "generatedAt": "2026-05-07T19:43:24Z",
   "entries": [
     {
       "id": "co.bennett.ui-improvements",
@@ -282,7 +282,7 @@
       "manifest": {
         "id": "co.bennett.ios-simulator",
         "name": "iOS Simulator",
-        "version": "1.0.0",
+        "version": "2.0.1",
         "githubRepo": "b-nnett/codex-plusplus-ios-simulator",
         "description": "Adds an iOS Simulator tab to Codex's right panel. Mirrors the booted simulator headlessly via CoreSimulator IOSurface and forwards taps/swipes through SimulatorKit's HID client.",
         "author": {
@@ -299,8 +299,8 @@
         "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/ios-simulator.png"
       },
       "repo": "b-nnett/codex-plusplus-ios-simulator",
-      "approvedCommitSha": "0ec57f6b7f0f1faee7be891e7be06a9682ddcba2",
-      "approvedAt": "2026-04-30T14:22:08+09:00",
+      "approvedCommitSha": "2601adbc6e8faff389d30c7afff6ed2985b36554",
+      "approvedAt": "2026-05-07T19:43:24Z",
       "approvedBy": "bennett"
     },
     {
