@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-07T10:50:41Z",
+  "generatedAt": "2026-05-07T10:58:40.205Z",
   "entries": [
     {
       "id": "co.bennett.ui-improvements",
@@ -84,39 +84,6 @@
       "approvedCommitSha": "b0398c839a42134d5cb301c432d43a9f13ac22e0",
       "approvedAt": "2026-05-06T05:02:49Z",
       "approvedBy": "bennett"
-    },
-    {
-      "id": "co.bennett.database-explorer",
-      "manifest": {
-        "id": "co.bennett.database-explorer",
-        "name": "Database Explorer",
-        "version": "1.0.0",
-        "githubRepo": "b-nnett/codex-plusplus-database-explorer",
-        "description": "Explore, export, and import Codex's local chat session store.",
-        "author": {
-          "name": "bennett",
-          "url": "https://github.com/b-nnett"
-        },
-        "homepage": "https://github.com/b-nnett/codex-plusplus-database-explorer",
-        "tags": [
-          "database",
-          "chats",
-          "backup",
-          "import",
-          "export"
-        ],
-        "scope": "both",
-        "main": "index.js",
-        "permissions": [
-          "settings"
-        ],
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/database-explorer.png"
-      },
-      "repo": "b-nnett/codex-plusplus-database-explorer",
-      "approvedCommitSha": "bcbe40fe9bfd418234225632d49c1f69883088b3",
-      "approvedAt": "2026-05-06T07:39:27+01:00",
-      "approvedBy": "bennett",
-      "screenshots": []
     },
     {
       "id": "co.bennett.codex-tab-switcher",
@@ -282,11 +249,40 @@
       "approvedBy": "bennett"
     },
     {
+      "id": "co.bennett.goal",
+      "manifest": {
+        "id": "co.bennett.goal",
+        "name": "Goal",
+        "version": "1.0.0",
+        "minRuntime": "0.1.6",
+        "githubRepo": "b-nnett/codex-plusplus-goal",
+        "description": "Adds Codex's /goal command and active goal UI to the desktop app.",
+        "author": {
+          "name": "bennett",
+          "url": "https://github.com/anomalyco/codex-plusplus"
+        },
+        "tags": [
+          "ui",
+          "goals",
+          "productivity",
+          "slash-command"
+        ],
+        "scope": "both",
+        "main": "index.js",
+        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/goal.png"
+      },
+      "repo": "b-nnett/codex-plusplus-goal",
+      "approvedCommitSha": "e38f99fa0116cf76dcd21150b0ae297f184e5157",
+      "approvedAt": "2026-05-07T10:58:40.205Z",
+      "approvedBy": "bennett",
+      "releaseUrl": "https://github.com/b-nnett/codex-plusplus-goal/releases/tag/1.0.0"
+    },
+    {
       "id": "co.bennett.ios-simulator",
       "manifest": {
         "id": "co.bennett.ios-simulator",
         "name": "iOS Simulator",
-        "version": "2.0.1",
+        "version": "1.0.0",
         "githubRepo": "b-nnett/codex-plusplus-ios-simulator",
         "description": "Adds an iOS Simulator tab to Codex's right panel. Mirrors the booted simulator headlessly via CoreSimulator IOSurface and forwards taps/swipes through SimulatorKit's HID client.",
         "author": {
@@ -303,8 +299,8 @@
         "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/ios-simulator.png"
       },
       "repo": "b-nnett/codex-plusplus-ios-simulator",
-      "approvedCommitSha": "2601adbc6e8faff389d30c7afff6ed2985b36554",
-      "approvedAt": "2026-05-06T20:20:57Z",
+      "approvedCommitSha": "0ec57f6b7f0f1faee7be891e7be06a9682ddcba2",
+      "approvedAt": "2026-04-30T14:22:08+09:00",
       "approvedBy": "bennett"
     },
     {
