@@ -1,7 +1,33 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-12T10:37:05.815Z",
+  "generatedAt": "2026-05-12T10:41:53.305Z",
   "entries": [
+    {
+      "id": "co.sakushi.add-project-by-path",
+      "manifest": {
+        "id": "co.sakushi.add-project-by-path",
+        "name": "Add Project by Path",
+        "version": "0.1.0",
+        "githubRepo": "ImSakushi/codex-plusplus-add-project-path",
+        "description": "Adds a native-looking project menu action for adding a workspace by typing its path.",
+        "author": {
+          "name": "Adrien Devoe"
+        },
+        "tags": [
+          "project",
+          "workspace",
+          "ui"
+        ],
+        "scope": "both",
+        "main": "index.cjs",
+        "iconUrl": "https://raw.githubusercontent.com/ImSakushi/codex-plusplus-add-project-path/main/icon.png"
+      },
+      "repo": "ImSakushi/codex-plusplus-add-project-path",
+      "approvedCommitSha": "aef5ebff965cb3c95df2a82f3f087b161e36c2ec",
+      "approvedAt": "2026-05-12T10:41:53.305Z",
+      "approvedBy": "bennett",
+      "reviewUrl": "https://github.com/b-nnett/codex-plusplus/issues/86"
+    },
     {
       "id": "co.bennett.ui-improvements",
       "manifest": {
@@ -450,6 +476,32 @@
       "approvedCommitSha": "1d97062f707caafdac5ed2af8bd9a986341dc912",
       "approvedAt": "2026-04-30T20:44:58+09:00",
       "approvedBy": "bennett"
+    },
+    {
+      "id": "com.imsakushi.quick-actions",
+      "manifest": {
+        "id": "com.imsakushi.quick-actions",
+        "name": "Quick Actions",
+        "version": "0.3.2",
+        "githubRepo": "ImSakushi/codex-plusplus-quick-actions",
+        "description": "Custom workflow actions for Codex's Git panel.",
+        "author": {
+          "name": "ImSakushi"
+        },
+        "tags": [
+          "git",
+          "workflow",
+          "productivity"
+        ],
+        "scope": "renderer",
+        "main": "index.cjs",
+        "iconUrl": "https://raw.githubusercontent.com/ImSakushi/codex-plusplus-quick-actions/main/icon.png"
+      },
+      "repo": "ImSakushi/codex-plusplus-quick-actions",
+      "approvedCommitSha": "625cef651103c478c9ce5a5d9800e86f72c586bf",
+      "approvedAt": "2026-05-12T10:41:53.305Z",
+      "approvedBy": "bennett",
+      "reviewUrl": "https://github.com/b-nnett/codex-plusplus/issues/87"
     },
     {
       "id": "co.shivam94.reasoning-fixes",
