@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-12T10:32:31.978Z",
+  "generatedAt": "2026-05-12T10:37:05.815Z",
   "entries": [
     {
       "id": "co.bennett.ui-improvements",
@@ -456,9 +456,8 @@
       "manifest": {
         "id": "co.shivam94.reasoning-fixes",
         "name": "Reasoning & Exploration Fixes",
-        "version": "1.1.0",
-        "githubRepo": "shivam2014/codex-plusplus-reasoning-fixes",
-        "description": "Shows reasoning steps, tool calls, file edits, and exploration activity as standalone chat items, with a floating control to collapse or expand them together.",
+        "version": "1.2.0",
+        "description": "v1.2.0 stable — Keep exploration panels open, reasoning visible, and tool outputs expanded. 14 source patches + 3 runtime features.",
         "author": {
           "name": "shivam94",
           "url": "https://github.com/shivam2014/codex-plusplus-reasoning-fixes"
@@ -467,17 +466,19 @@
           "ui",
           "reasoning",
           "exploration",
-          "tool-output"
+          "accessibility"
         ],
         "scope": "both",
         "main": "index.js",
+        "githubRepo": "shivam2014/codex-plusplus-reasoning-fixes",
         "minRuntime": "0.1.0",
         "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/thought-fixer.png"
       },
       "repo": "shivam2014/codex-plusplus-reasoning-fixes",
-      "approvedCommitSha": "2766527ef1b159ee29d338fc7475372010ed7f6f",
-      "approvedAt": "2026-05-05T19:19:59Z",
-      "approvedBy": "bennett"
+      "approvedCommitSha": "bcb516e9a3d84e38bb6528ebd9a11d9ab5f722ae",
+      "approvedAt": "2026-05-12T10:37:05.815Z",
+      "approvedBy": "bennett",
+      "reviewUrl": "https://github.com/shivam2014/codex-plusplus-reasoning-fixes/compare/2766527ef1b159ee29d338fc7475372010ed7f6f...bcb516e9a3d84e38bb6528ebd9a11d9ab5f722ae"
     },
     {
       "id": "co.bennett.windows-computer-use",
