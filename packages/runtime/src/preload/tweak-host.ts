@@ -15,6 +15,9 @@
 import { ipcRenderer } from "electron";
 import { registerSection, registerPage, clearSections, setListedTweaks } from "./settings-injector";
 import { fiberForNode } from "./react-hook";
+import { waitForElement, cancelAllElementWaiters } from "./element-waiter";
+import { createTweakModuleLoader } from "./tweak-module-loader";
+import { disposeSidebarActionsForTweak, rendererSidebarApi } from "./main-sidebar-actions";
 import type {
   CodexCdpStatus,
   CodexCdpTarget,
@@ -22,14 +25,10 @@ import type {
   CodexRuntimeInfo,
   CodexViewRef,
   CodexWindowRef,
-  NativeHelperLaunchOptions,
   NativeHelperRef,
   NativeModuleKind,
-  NativeModuleLoadOptions,
   NativeModuleRef,
-  NativePanelCreateOptions,
   NativePanelRef,
-  NativeViewAttachOptions,
   NativeViewRef,
   TweakManifest,
   TweakApi,
@@ -68,12 +67,10 @@ interface ElectronBridge {
 }
 
 const loaded = new Map<string, { stop?: () => void }>();
-let cachedPaths: UserPaths | null = null;
 
 export async function startTweakHost(): Promise<void> {
   const tweaks = (await ipcRenderer.invoke("codexpp:list-tweaks")) as ListedTweak[];
   const paths = (await ipcRenderer.invoke("codexpp:user-paths")) as UserPaths;
-  cachedPaths = paths;
   // Push the list to the settings injector so the Tweaks page can render
   // cards even before any tweak's start() runs (and for disabled tweaks
   // that we never load).
@@ -125,9 +122,11 @@ export function teardownTweakHost(): void {
     } finally {
       void ipcRenderer.invoke("codexpp:codex-view-dispose-tweak", id).catch(() => {});
       void ipcRenderer.invoke("codexpp:native-dispose-tweak", id).catch(() => {});
+      disposeSidebarActionsForTweak(id);
     }
   }
   loaded.clear();
+  cancelAllElementWaiters("tweak host teardown");
   clearSections();
 }
 
@@ -140,17 +139,15 @@ async function loadTweak(t: ListedTweak, paths: UserPaths): Promise<void> {
   // Evaluate as CJS-shaped: provide module/exports/api. Tweak code may use
   // `module.exports = { start, stop }` or `exports.start = ...` or pure ESM
   // default export shape (we accept both).
-  const module = { exports: {} as { default?: Tweak } & Tweak };
-  const exports = module.exports;
-  // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-  const fn = new Function(
-    "module",
-    "exports",
-    "console",
-    `${source}\n//# sourceURL=codexpp-tweak://${encodeURIComponent(t.manifest.id)}/${encodeURIComponent(t.entry)}`,
-  );
-  fn(module, exports, console);
-  const mod = module.exports as { default?: Tweak } & Tweak;
+  const loader = createTweakModuleLoader({
+    manifestId: t.manifest.id,
+    entry: t.entry,
+    dir: t.dir,
+    readSource: readTweakSourceSync,
+    fallbackRequire: rendererFallbackRequire,
+    console,
+  });
+  const mod = loader.loadEntry(source) as { default?: Tweak } & Tweak;
   const tweak: Tweak = (mod as { default?: Tweak }).default ?? (mod as Tweak);
   if (typeof tweak?.start !== "function") {
     throw new Error(`tweak ${t.manifest.id} has no start()`);
@@ -158,6 +155,22 @@ async function loadTweak(t: ListedTweak, paths: UserPaths): Promise<void> {
   const api = makeRendererApi(t.manifest, paths);
   await tweak.start(api);
   loaded.set(t.manifest.id, { stop: tweak.stop?.bind(tweak) });
+}
+
+function readTweakSourceSync(entryPath: string): string {
+  const result = ipcRenderer.sendSync("codexpp:read-tweak-source-sync", entryPath) as
+    | { ok: true; source: string }
+    | { ok: false; error?: string };
+  if (result?.ok === true) return result.source;
+  throw new Error(result?.error || `Unable to read tweak source: ${entryPath}`);
+}
+
+function rendererFallbackRequire(request: string): unknown {
+  const fallback = (globalThis as unknown as { require?: (id: string) => unknown }).require;
+  if (typeof fallback === "function") return fallback(request);
+  throw new Error(
+    `Renderer tweak require only supports relative files; bundle dependency "${request}" into the tweak entry`,
+  );
 }
 
 function makeRendererApi(manifest: TweakManifest, paths: UserPaths): TweakApi {
@@ -213,23 +226,7 @@ function makeRendererApi(manifest: TweakManifest, paths: UserPaths): TweakApi {
         }
         return null;
       },
-      waitForElement: (sel, timeoutMs = 5000) =>
-        new Promise((resolve, reject) => {
-          const existing = document.querySelector(sel);
-          if (existing) return resolve(existing);
-          const deadline = Date.now() + timeoutMs;
-          const obs = new MutationObserver(() => {
-            const el = document.querySelector(sel);
-            if (el) {
-              obs.disconnect();
-              resolve(el);
-            } else if (Date.now() > deadline) {
-              obs.disconnect();
-              reject(new Error(`timeout waiting for ${sel}`));
-            }
-          });
-          obs.observe(document.documentElement, { childList: true, subtree: true });
-        }),
+      waitForElement,
     },
     ipc: {
       on: (c, h) => {
@@ -261,6 +258,7 @@ function rendererCodexApi(tweakId: string): NonNullable<TweakApi["codex"]> {
       getCapabilities: () =>
         ipcRenderer.invoke("codexpp:codex-runtime-capabilities") as Promise<CodexRuntimeCapabilities>,
     },
+    sidebar: rendererSidebarApi(tweakId),
     windows: {
       create: (options) =>
         ipcRenderer.invoke("codexpp:codex-window-create", options) as Promise<CodexWindowRef>,

@@ -48,7 +48,7 @@ export function uninstallWatcher(): void {
 }
 
 const LABEL = "com.codexplusplus.watcher";
-const WATCHER_INTERVAL_SECONDS = 5 * 60;
+const WATCHER_INTERVAL_SECONDS = 60;
 
 function launchdPath(): string {
   return join(targetUserHome(), "Library", "LaunchAgents", `${LABEL}.plist`);
@@ -56,6 +56,16 @@ function launchdPath(): string {
 
 function launchdLogPath(): string {
   return join(targetUserHome(), "Library", "Logs", "codex-plusplus-watcher.log");
+}
+
+export function launchdWatchPaths(appRoot: string): string[] {
+  return [
+    appRoot,
+    join(appRoot, "Contents"),
+    join(appRoot, "Contents", "Info.plist"),
+    join(appRoot, "Contents", "Resources"),
+    join(appRoot, "Contents", "Resources", "app.asar"),
+  ];
 }
 
 function installLaunchd(appRoot: string): WatcherKind {
@@ -69,6 +79,9 @@ function installLaunchd(appRoot: string): WatcherKind {
   // directly so auto-repair does not depend on npm availability. The CLI
   // throttles GitHub release checks, so this interval keeps app repair prompt.
   const repair = xmlEscape(watcherShellScript(logPath));
+  const watchPaths = launchdWatchPaths(appRoot)
+    .map((watchPath) => `    <string>${xmlEscape(watchPath)}</string>`)
+    .join("\n");
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -87,7 +100,7 @@ function installLaunchd(appRoot: string): WatcherKind {
   <integer>${WATCHER_INTERVAL_SECONDS}</integer>
   <key>WatchPaths</key>
   <array>
-    <string>${appRoot}/Contents/Resources/app.asar</string>
+${watchPaths}
   </array>
   <key>ThrottleInterval</key>
   <integer>10</integer>
@@ -288,7 +301,7 @@ export function watcherShellScript(logPath?: string): string {
   const commands = [
     "sleep 3",
     `${cliShellCommand("update", ["--watcher", "--quiet", "--no-repair"])} || true`,
-    `${cliShellCommand("repair", ["--watcher", "--quiet"])} || true`,
+    `${cliShellCommand("repair", ["--watcher", "--quiet"])}`,
   ];
   if (logPath) commands.unshift(`: > ${shellSingleQuote(logPath)}`);
   return commands.join("; ");

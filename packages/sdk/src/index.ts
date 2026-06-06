@@ -397,6 +397,8 @@ export interface TweakFs {
 export interface CodexApi {
   /** Runtime and capability metadata for the current Codex host. */
   runtime: CodexRuntimeApi;
+  /** Renderer-only: register native-looking actions in Codex's main sidebar. */
+  sidebar?: CodexSidebarApi;
   /** Stable window helpers over Codex/Owl private window services. */
   windows: CodexWindowsApi;
   /** Owl WebContentsView/BrowserView overlays inside Codex windows. */
@@ -422,6 +424,43 @@ export interface CodexApi {
    * chat UI instead of a detached shell.
    */
   createWindow(options: CodexCreateWindowOptions): Promise<CodexWindowRef>;
+}
+
+export interface CodexSidebarActionOptions {
+  /** Stable id, scoped to the tweak. */
+  id: string;
+  /** Visible label and accessible name. */
+  label: string;
+  /** Optional tooltip. Defaults to `label`. */
+  tooltip?: string;
+  /** Optional currentColor SVG markup. Defaults to a generic app icon. */
+  iconSvg?: string;
+  /** Lower numbers appear earlier in the top action group. Defaults to 50. */
+  order?: number;
+  /** Initial active state. */
+  active?: boolean;
+  /** Called when the action is clicked. */
+  onClick?: (event: MouseEvent) => void | Promise<void>;
+}
+
+export interface CodexSidebarActionUpdate {
+  label?: string;
+  tooltip?: string;
+  iconSvg?: string;
+  order?: number;
+  active?: boolean;
+  onClick?: (event: MouseEvent) => void | Promise<void>;
+}
+
+export interface CodexSidebarActionRef {
+  id: string;
+  update(update: CodexSidebarActionUpdate): void;
+  setActive(active: boolean): void;
+  dispose(): void;
+}
+
+export interface CodexSidebarApi {
+  registerAction(options: CodexSidebarActionOptions): CodexSidebarActionRef;
 }
 
 export type CodexRuntimeType = "owl" | "electron" | "unknown";

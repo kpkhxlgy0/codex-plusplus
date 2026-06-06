@@ -112,7 +112,6 @@ function findWindowServicesFactoryAssignment(source: string): ServiceFactoryAssi
   OBJECT_CALL_RE.lastIndex = 0;
   let match: RegExpExecArray | null;
   while ((match = OBJECT_CALL_RE.exec(source)) !== null) {
-    const functionName = match[1] ?? "";
     const parenStart = match.index + match[0].indexOf("(");
     const serviceVar = findAssignedIdentifierBefore(source, match.index);
     if (!serviceVar) continue;

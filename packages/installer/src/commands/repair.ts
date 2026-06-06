@@ -18,6 +18,7 @@ import {
   promptRestartCodexAfterPatch,
   promptRestartCodexAfterRuntimeUpdate,
   promptRestartCodexToRepatch,
+  quitCodex,
   showCodexUpdateDetectedNotification,
   showUpdateModePausedAlert,
 } from "../alerts.js";
@@ -60,8 +61,10 @@ export async function repair(opts: Opts = {}): Promise<void> {
 
   let settledBeforeHashCheck = false;
   if (state && !opts.force) {
-    announceCodexUpdateDetected(paths.updateModeFile, opts.app ?? state.appRoot);
-    notifyUpdateModePaused(paths.updateModeFile, opts.app ?? state.appRoot);
+    if (shouldShowUpdateUi(opts)) {
+      announceCodexUpdateDetected(paths.updateModeFile, opts.app ?? state.appRoot);
+      notifyUpdateModePaused(paths.updateModeFile, opts.app ?? state.appRoot);
+    }
     await waitForMacAppUpdateToSettle(opts.app ?? state.appRoot, settleOptions(opts, paths.updateModeFile));
     settledBeforeHashCheck = true;
     const codex = locateCodex(opts.app ?? state.appRoot);
@@ -71,7 +74,7 @@ export async function repair(opts: Opts = {}): Promise<void> {
       if (codexVersion === updateMode.codexVersion && isUpdateModeFresh(updateMode)) {
         const watcher = refreshWatcher(state.watcher, codex.appRoot, opts.quiet);
         writeState(paths.stateFile, { ...state, watcher, sourceRoot });
-        if (!updateMode.notifiedAt) {
+        if (shouldShowUpdateUi(opts) && !updateMode.notifiedAt) {
           showUpdateModePausedAlert(codex.appRoot, codexVersion);
           writeUpdateMode(paths.updateModeFile, {
             ...updateMode,
@@ -131,7 +134,11 @@ export async function repair(opts: Opts = {}): Promise<void> {
     const codex = locateCodex(opts.app ?? state?.appRoot);
     repairedAppRoot = codex.appRoot;
     codexWasRunning = isCodexRunning(codex.appRoot);
-    if (codexWasRunning && process.platform === "darwin" && promptRestartCodexToRepatch(codex.appRoot)) {
+    if (codexWasRunning && process.platform === "darwin" && isWatcherRepair(opts)) {
+      quitCodex(codex.appRoot);
+      reopenAfterRepair = true;
+      codexWasRunning = false;
+    } else if (codexWasRunning && process.platform === "darwin" && promptRestartCodexToRepatch(codex.appRoot)) {
       reopenAfterRepair = true;
       codexWasRunning = false;
     } else if (codexWasRunning && process.platform === "darwin") {
@@ -221,6 +228,10 @@ function settleOptions(opts: Opts, updateModeFile: string): SettleOptions {
 
 function isWatcherRepair(opts: Opts): boolean {
   return opts.watcher === true || process.env.CODEX_PLUSPLUS_WATCHER === "1";
+}
+
+function shouldShowUpdateUi(opts: Opts): boolean {
+  return !opts.quiet && !isWatcherRepair(opts);
 }
 
 async function waitForMacAppUpdateToSettle(appRoot: string | undefined, opts: SettleOptions = {}): Promise<void> {

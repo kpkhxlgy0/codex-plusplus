@@ -3,17 +3,17 @@
  * Settings injector for Codex's Settings page.
  *
  * Codex's settings is a routed page (URL stays at `/index.html?hostId=local`)
- * NOT a modal dialog. The sidebar lives inside a `<div class="flex flex-col
- * gap-1 gap-0">` wrapper that holds one or more `<div class="flex flex-col
- * gap-px">` groups of buttons. There are no stable `role` / `aria-label` /
- * `data-testid` hooks on the shell so we identify the sidebar by text-content
- * match against known item labels (General, Appearance, Configuration, …).
+ * NOT a modal dialog. The sidebar is a grouped settings nav (Personal,
+ * Integrations, Coding, Archived) with native section headers above stacks of
+ * buttons. There are no stable `role` / `aria-label` / `data-testid` hooks on
+ * the shell so we identify the sidebar by text-content match against known item
+ * labels (General, Appearance, Configuration, …).
  *
  * Layout we inject:
  *
- *   GENERAL                       (uppercase group label)
+ *   Personal                      (native Codex group label)
  *   [Codex's existing items group]
- *   CODEX++                       (uppercase group label)
+ *   Codex++                       (native Codex group label)
  *   ⓘ Config
  *   ☰ Tweaks
  *   ◇ Tweak Store
@@ -30,6 +30,9 @@ exports.registerPage = registerPage;
 exports.setListedTweaks = setListedTweaks;
 const electron_1 = require("electron");
 const tweak_store_1 = require("../tweak-store");
+const settings_dom_heuristics_1 = require("./settings-dom-heuristics");
+const settings_icons_1 = require("./settings-icons");
+const settings_svg_1 = require("./settings-svg");
 const CODEX_PLUSPLUS_RELEASES_URL = "https://github.com/b-nnett/codex-plusplus/releases";
 const state = {
     sections: new Map(),
@@ -55,6 +58,8 @@ const state = {
     tweakStorePromise: null,
     tweakStoreError: null,
 };
+let scheduledInjectFrame = null;
+let lastSidebarMissingLogAt = 0;
 function plog(msg, extra) {
     electron_1.ipcRenderer.send("codexpp:preload-log", "info", `[settings-injector] ${msg}${extra === undefined ? "" : " " + safeStringify(extra)}`);
 }
@@ -71,8 +76,7 @@ function startSettingsInjector() {
     if (state.observer)
         return;
     const obs = new MutationObserver(() => {
-        tryInject();
-        maybeDumpDom();
+        scheduleInject();
     });
     obs.observe(document.documentElement, { childList: true, subtree: true });
     state.observer = obs;
@@ -88,28 +92,41 @@ function startSettingsInjector() {
         };
         window.addEventListener(`codexpp-${m}`, onNav);
     }
-    tryInject();
-    maybeDumpDom();
+    runInjectAndDump();
     let ticks = 0;
     const interval = setInterval(() => {
         ticks++;
-        tryInject();
-        maybeDumpDom();
+        scheduleInject();
         if (ticks > 60)
             clearInterval(interval);
     }, 500);
 }
 function onNav() {
     state.fingerprint = null;
+    runInjectAndDump();
+}
+function runInjectAndDump() {
+    if (scheduledInjectFrame !== null) {
+        cancelAnimationFrame(scheduledInjectFrame);
+        scheduledInjectFrame = null;
+    }
     tryInject();
     maybeDumpDom();
+}
+function scheduleInject() {
+    if (scheduledInjectFrame !== null)
+        return;
+    scheduledInjectFrame = requestAnimationFrame(() => {
+        scheduledInjectFrame = null;
+        tryInject();
+    });
 }
 function onDocumentClick(e) {
     const target = e.target instanceof Element ? e.target : null;
     const control = target?.closest("[role='link'],button,a");
     if (!(control instanceof HTMLElement))
         return;
-    if (compactSettingsText(control.textContent || "") !== "Back to app")
+    if ((0, settings_dom_heuristics_1.compactSettingsText)(control.textContent || "") !== "Back to app")
         return;
     setTimeout(() => {
         setSettingsSurfaceVisible(false, "back-to-app");
@@ -195,19 +212,20 @@ function tryInject() {
     const itemsGroup = findSidebarItemsGroup();
     if (!itemsGroup) {
         scheduleSettingsSurfaceHidden();
-        plog("sidebar not found");
+        logSidebarMissing();
         return;
     }
+    lastSidebarMissingLogAt = 0;
     if (state.settingsSurfaceHideTimer) {
         clearTimeout(state.settingsSurfaceHideTimer);
         state.settingsSurfaceHideTimer = null;
     }
     setSettingsSurfaceVisible(true, "sidebar-found");
-    // Codex's items group lives inside an outer wrapper that's already styled
-    // to hold multiple groups (`flex flex-col gap-1 gap-0`). We inject our
-    // group as a sibling so the natural gap-1 acts as our visual separator.
-    const outer = itemsGroup.parentElement ?? itemsGroup;
-    if (!isSettingsSidebarCandidate(itemsGroup) || !isSettingsSidebarCandidate(outer)) {
+    // Codex's native settings groups live inside the scrollable nav stack. If we
+    // append outside that stack, the flex-1 scroller pushes Codex++ to the bottom
+    // of the sidebar and creates a large visual gap after the last native group.
+    const outer = findSidebarInjectionRoot(itemsGroup);
+    if (!(0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(itemsGroup) || !(0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(outer)) {
         scheduleSettingsSurfaceHidden();
         plog("rejected non-settings sidebar candidate", {
             itemsGroup: describe(itemsGroup),
@@ -216,6 +234,7 @@ function tryInject() {
         return;
     }
     state.sidebarRoot = outer;
+    removeSettingsGroupsOutsideRoot(outer);
     syncNativeSettingsHeader(itemsGroup, outer);
     if (state.navGroup && outer.contains(state.navGroup)) {
         syncPagesGroup();
@@ -256,15 +275,15 @@ function tryInject() {
     // ── Group container ───────────────────────────────────────────────────
     const group = document.createElement("div");
     group.dataset.codexpp = "nav-group";
-    group.className = "flex flex-col gap-px";
+    group.className = "flex flex-col gap-1";
     const updateButton = sidebarUpdatePillButton();
     state.codexPlusPlusUpdateButton = updateButton;
-    group.appendChild(sidebarGroupHeader("Codex++", "pt-3", updateButton));
+    group.appendChild(sidebarGroupHeader("Codex++", updateButton));
     refreshSidebarCodexPlusPlusUpdateButton();
     // ── Sidebar items ────────────────────────────────────────────────────
-    const configBtn = makeSidebarItem("Config", configIconSvg());
-    const tweaksBtn = makeSidebarItem("Tweaks", tweaksIconSvg());
-    const storeBtn = makeSidebarItem("Tweak Store", storeIconSvg());
+    const configBtn = makeSidebarItem("Config", (0, settings_icons_1.configIconSvg)());
+    const tweaksBtn = makeSidebarItem("Tweaks", (0, settings_icons_1.tweaksIconSvg)());
+    const storeBtn = makeSidebarItem("Tweak Store", (0, settings_icons_1.storeIconSvg)());
     appendSidebarStoreUpdateBadge(storeBtn);
     configBtn.addEventListener("click", (e) => {
         e.preventDefault();
@@ -281,36 +300,100 @@ function tryInject() {
         e.stopPropagation();
         activatePage({ kind: "store" });
     });
-    group.appendChild(configBtn);
-    group.appendChild(tweaksBtn);
-    group.appendChild(storeBtn);
+    const items = sidebarGroupItems();
+    items.appendChild(configBtn);
+    items.appendChild(tweaksBtn);
+    items.appendChild(storeBtn);
+    group.appendChild(items);
     outer.appendChild(group);
     state.navGroup = group;
     state.navButtons = { config: configBtn, tweaks: tweaksBtn, store: storeBtn };
     plog("nav group injected", { outerTag: outer.tagName });
     syncPagesGroup();
 }
+function logSidebarMissing() {
+    const now = Date.now();
+    if (now - lastSidebarMissingLogAt < 5000)
+        return;
+    lastSidebarMissingLogAt = now;
+    plog("sidebar not found");
+}
 function syncNativeSettingsHeader(itemsGroup, outer) {
     if (state.nativeNavHeader && outer.contains(state.nativeNavHeader))
         return;
     if (outer === itemsGroup)
+        return;
+    if ((0, settings_dom_heuristics_1.hasNativeSettingsSectionHeaders)(outer))
         return;
     const header = sidebarGroupHeader("General");
     header.dataset.codexpp = "native-nav-header";
     outer.insertBefore(header, itemsGroup);
     state.nativeNavHeader = header;
 }
-function sidebarGroupHeader(text, topPadding = "pt-2", trailing) {
+function findSidebarInjectionRoot(itemsGroup) {
+    const ownScrollable = smallestSettingsScrollable([itemsGroup]);
+    if (ownScrollable)
+        return ownScrollable;
+    const descendantScrollable = smallestSettingsScrollable(Array.from(itemsGroup.querySelectorAll("div,nav,aside")));
+    if (descendantScrollable)
+        return descendantScrollable;
+    const ancestors = [];
+    let node = itemsGroup.parentElement;
+    for (let depth = 0; node && depth < 5; depth++) {
+        ancestors.push(node);
+        node = node.parentElement;
+    }
+    const ancestorScrollable = smallestSettingsScrollable(ancestors);
+    if (ancestorScrollable)
+        return ancestorScrollable;
+    return itemsGroup.parentElement ?? itemsGroup;
+}
+function smallestSettingsScrollable(nodes) {
+    let best = null;
+    let bestArea = Number.POSITIVE_INFINITY;
+    for (const node of nodes) {
+        if (!node.classList.contains("overflow-y-auto"))
+            continue;
+        if (!(0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(node))
+            continue;
+        const rect = node.getBoundingClientRect();
+        const area = rect.width * rect.height;
+        if (area < bestArea) {
+            best = node;
+            bestArea = area;
+        }
+    }
+    return best;
+}
+function removeSettingsGroupsOutsideRoot(root) {
+    const groups = document.querySelectorAll("[data-codexpp='nav-group'], [data-codexpp='pages-group'], [data-codexpp='native-nav-header']");
+    for (const group of Array.from(groups)) {
+        if (group.parentElement === root)
+            continue;
+        resetCodexPpInjectedSettingsGroupState(group);
+        group.remove();
+    }
+}
+function sidebarGroupHeader(text, trailing) {
     const header = document.createElement("div");
-    header.className =
-        `px-row-x ${topPadding} pb-1 flex items-center justify-between gap-2 text-[11px] font-medium uppercase tracking-wider text-token-description-foreground select-none`;
+    header.className = "flex items-center justify-between gap-2 pr-0.5 pl-2 select-none";
     const label = document.createElement("span");
-    label.className = "truncate";
+    label.className = "min-w-0 flex-1 truncate text-base text-token-input-placeholder-foreground opacity-75";
     label.textContent = text;
     header.appendChild(label);
-    if (trailing)
-        header.appendChild(trailing);
+    if (trailing) {
+        const trailingWrap = document.createElement("div");
+        trailingWrap.className = "shrink-0";
+        trailingWrap.appendChild(trailing);
+        header.appendChild(trailingWrap);
+    }
     return header;
+}
+function sidebarGroupItems() {
+    const items = document.createElement("div");
+    items.dataset.codexpp = "group-items";
+    items.className = "flex flex-col gap-px";
+    return items;
 }
 function scheduleSettingsSurfaceHidden() {
     if (!state.settingsSurfaceVisible || state.settingsSurfaceHideTimer)
@@ -318,7 +401,7 @@ function scheduleSettingsSurfaceHidden() {
     state.settingsSurfaceHideTimer = setTimeout(() => {
         state.settingsSurfaceHideTimer = null;
         const sidebar = findSidebarItemsGroup();
-        if (sidebar && isSettingsSidebarCandidate(sidebar))
+        if (sidebar && (0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(sidebar))
             return;
         if (isSettingsTextVisible())
             return;
@@ -326,172 +409,7 @@ function scheduleSettingsSurfaceHidden() {
     }, 1500);
 }
 function isSettingsTextVisible() {
-    return isCodexPpSettingsLabelSet(codexPpSettingsLabelsFrom(document));
-}
-function compactSettingsText(value) {
-    return String(value || "").replace(/\s+/g, " ").trim();
-}
-const CODEXPP_CORE_SETTINGS_LABELS = [
-    "General",
-    "常规",
-    "通用",
-    "Appearance",
-    "外观",
-    "Configuration",
-    "配置",
-    "默认权限",
-    "Personalization",
-    "个性化",
-].map(normalizeCodexPpSettingsLabel);
-const CODEXPP_EXTENDED_SETTINGS_LABELS = [
-    "Account",
-    "账户",
-    "账号",
-    "General",
-    "常规",
-    "通用",
-    "Appearance",
-    "外观",
-    "Configuration",
-    "配置",
-    "默认权限",
-    "Personalization",
-    "个性化",
-    "Keyboard shortcuts",
-    "Archived chats",
-    "Usage",
-    "Computer use",
-    "Browser use",
-    "MCP servers",
-    "MCP Servers",
-    "MCP 服务器",
-    "Git",
-    "Environments",
-    "环境",
-    "Cloud Environments",
-    "Worktrees",
-    "Connections",
-    "Plugins",
-    "Skills",
-].map(normalizeCodexPpSettingsLabel);
-const CODEXPP_SETTINGS_ONLY_LABELS = [
-    "General",
-    "常规",
-    "通用",
-    "Appearance",
-    "外观",
-    "Configuration",
-    "配置",
-    "默认权限",
-    "Personalization",
-    "个性化",
-    "Keyboard shortcuts",
-    "Archived chats",
-    "Usage",
-    "Computer use",
-    "Browser use",
-    "MCP servers",
-    "MCP Servers",
-    "MCP 服务器",
-    "Git",
-    "Environments",
-    "环境",
-    "Cloud Environments",
-    "Worktrees",
-    "Connections",
-].map(normalizeCodexPpSettingsLabel);
-const CODEXPP_MAIN_APP_NAV_LABELS = [
-    "New chat",
-    "Quick chat",
-    "快速对话",
-    "Search",
-    "搜索",
-    "Plugins",
-    "插件",
-    "Automations",
-    "Automation",
-    "自动化",
-    "Chats",
-    "Chat",
-    "对话",
-    "Projects",
-    "项目",
-    "Pinned",
-    "Settings",
-    "设置",
-    "Work locally",
-].map(normalizeCodexPpSettingsLabel);
-function normalizeCodexPpSettingsLabel(value) {
-    return compactSettingsText(value)
-        .toLocaleLowerCase()
-        .normalize("NFD")
-        .replace(/[\u0300-\u036f]/g, "")
-        .replace(/[’‘`´]/g, "'")
-        .replace(/\s+/g, " ")
-        .trim();
-}
-function codexPpControlLabel(el) {
-    return normalizeCodexPpSettingsLabel(el.getAttribute("aria-label") ||
-        el.getAttribute("title") ||
-        el.textContent ||
-        "");
-}
-function codexPpSettingsLabelsFrom(root) {
-    const controls = Array.from(root.querySelectorAll("button,a,[role='button'],[role='link']"));
-    return [
-        ...new Set(controls
-            .map(codexPpControlLabel)
-            .filter(Boolean)),
-    ];
-}
-function codexPpSettingsLabelScore(labels) {
-    const core = new Set();
-    const total = new Set();
-    for (const label of labels) {
-        for (const marker of CODEXPP_CORE_SETTINGS_LABELS) {
-            if (codexPpLabelMatchesMarker(label, marker))
-                core.add(marker);
-        }
-        for (const marker of CODEXPP_EXTENDED_SETTINGS_LABELS) {
-            if (codexPpLabelMatchesMarker(label, marker))
-                total.add(marker);
-        }
-    }
-    return { core: core.size, total: total.size };
-}
-function codexPpLabelMatchesMarker(label, marker) {
-    return label === marker || label.includes(marker);
-}
-function codexPpMarkerCount(labels, markers) {
-    const matched = new Set();
-    for (const label of labels) {
-        for (const marker of markers) {
-            if (codexPpLabelMatchesMarker(label, marker))
-                matched.add(marker);
-        }
-    }
-    return matched.size;
-}
-function hasCodexPpSettingsOnlySignal(labels) {
-    return codexPpMarkerCount(labels, CODEXPP_SETTINGS_ONLY_LABELS) > 0;
-}
-function hasMainAppSidebarSignals(labels) {
-    return codexPpMarkerCount(labels, CODEXPP_MAIN_APP_NAV_LABELS) >= 2;
-}
-function isCodexPpSettingsLabelSet(labels) {
-    const score = codexPpSettingsLabelScore(labels);
-    return score.core >= 2 && score.total >= 3;
-}
-function codexPpVisibleBox(el) {
-    if (!el.isConnected)
-        return null;
-    const style = getComputedStyle(el);
-    if (style.display === "none" || style.visibility === "hidden")
-        return null;
-    const rect = el.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0)
-        return null;
-    return rect;
+    return (0, settings_dom_heuristics_1.isCodexPpSettingsLabelSet)((0, settings_dom_heuristics_1.codexPpSettingsLabelsFrom)(document));
 }
 function setSettingsSurfaceVisible(visible, reason) {
     if (state.settingsSurfaceVisible === visible)
@@ -518,7 +436,7 @@ function syncPagesGroup() {
     const outer = state.sidebarRoot;
     if (!outer)
         return;
-    if (!isSettingsSidebarCandidate(outer)) {
+    if (!(0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(outer)) {
         state.sidebarRoot = null;
         state.pagesGroup = null;
         state.pagesGroupKey = null;
@@ -552,18 +470,22 @@ function syncPagesGroup() {
     if (!group || !outer.contains(group)) {
         group = document.createElement("div");
         group.dataset.codexpp = "pages-group";
-        group.className = "flex flex-col gap-px";
-        group.appendChild(sidebarGroupHeader("Tweaks", "pt-3"));
+        group.className = "flex flex-col gap-1";
+        group.appendChild(sidebarGroupHeader("Tweaks"));
+        group.appendChild(sidebarGroupItems());
         outer.appendChild(group);
         state.pagesGroup = group;
     }
-    else {
-        // Strip prior buttons (keep the header at index 0).
+    let items = group.querySelector(':scope > [data-codexpp="group-items"]');
+    if (!items) {
+        items = sidebarGroupItems();
         while (group.children.length > 1)
-            group.removeChild(group.lastChild);
+            items.appendChild(group.children[1]);
+        group.appendChild(items);
     }
+    items.replaceChildren();
     for (const p of pages) {
-        const icon = p.page.iconSvg ?? defaultPageIconSvg();
+        const icon = p.page.iconSvg ?? (0, settings_icons_1.defaultPageIconSvg)();
         const btn = makeSidebarItem(p.page.title, icon);
         btn.dataset.codexpp = `nav-page-${p.id}`;
         btn.addEventListener("click", (e) => {
@@ -572,7 +494,7 @@ function syncPagesGroup() {
             activatePage({ kind: "registered", id: p.id });
         });
         p.navButton = btn;
-        group.appendChild(btn);
+        items.appendChild(btn);
     }
     state.pagesGroupKey = desiredKey;
     plog("pages group synced", {
@@ -593,7 +515,11 @@ function makeSidebarItem(label, iconSvg) {
     const inner = document.createElement("div");
     inner.className =
         "flex min-w-0 items-center text-base gap-2 flex-1 text-token-foreground";
-    inner.innerHTML = `${iconSvg}<span class="truncate">${label}</span>`;
+    (0, settings_svg_1.appendSvgHtml)(inner, iconSvg);
+    const text = document.createElement("span");
+    text.className = "truncate";
+    text.textContent = label;
+    inner.appendChild(text);
     btn.appendChild(inner);
     return btn;
 }
@@ -776,7 +702,7 @@ function rerender() {
     const host = state.panelHost;
     if (!host)
         return;
-    host.innerHTML = "";
+    host.replaceChildren();
     const ap = state.activePage;
     if (ap.kind === "registered") {
         const entry = state.pages.get(ap.id);
@@ -1359,7 +1285,7 @@ function renderTweakStorePage(sectionsWrap, headerActions) {
     source.textContent = "Loading live registry";
     const actions = document.createElement("div");
     actions.className = "flex shrink-0 items-center gap-2";
-    const refreshBtn = storeIconButton(refreshIconSvg(), "Refresh tweak store", () => {
+    const refreshBtn = storeIconButton((0, settings_icons_1.refreshIconSvg)(), "Refresh tweak store", () => {
         refreshBtn.disabled = true;
         updateStoreUpdateBadge(null);
         grid.textContent = "";
@@ -1593,11 +1519,10 @@ function tweakStoreReadMoreButton(repo) {
     readMore.type = "button";
     readMore.className =
         "inline-flex w-fit items-center gap-1 text-sm font-medium text-token-text-link-foreground hover:underline";
-    readMore.innerHTML =
-        `Read More` +
-            `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">` +
-            `<path d="M6 3.5h6.5V10M12.25 3.75 4 12" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>` +
-            `</svg>`;
+    readMore.textContent = "Read More";
+    (0, settings_svg_1.appendSvgHtml)(readMore, `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">` +
+        `<path d="M6 3.5h6.5V10M12.25 3.75 4 12" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"/>` +
+        `</svg>`);
     readMore.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -1820,7 +1745,7 @@ function storeIconButton(iconSvg, label, onClick) {
     btn.type = "button";
     btn.className =
         "border-token-border user-select-none no-drag cursor-interaction flex h-8 w-8 items-center justify-center rounded-lg border border-transparent bg-token-foreground/5 p-0 text-token-foreground enabled:hover:bg-token-foreground/10 disabled:cursor-not-allowed disabled:opacity-40";
-    btn.innerHTML = iconSvg;
+    (0, settings_svg_1.appendSvgHtml)(btn, iconSvg);
     btn.setAttribute("aria-label", label);
     btn.title = label;
     btn.addEventListener("click", (e) => {
@@ -1830,22 +1755,17 @@ function storeIconButton(iconSvg, label, onClick) {
     });
     return btn;
 }
-function refreshIconSvg() {
-    return (`<svg width="18" height="18" viewBox="0 0 20 20" fill="none" class="icon-xs" aria-hidden="true">` +
-        `<path d="M4.4 9.35A5.65 5.65 0 0 1 14 5.3L15.75 7M15.75 3.75V7h-3.25" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` +
-        `<path d="M15.6 10.65A5.65 5.65 0 0 1 6 14.7L4.25 13M4.25 16.25V13H7.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` +
-        `</svg>`);
-}
 function verifiedSafeBadge() {
     const badge = document.createElement("span");
     badge.className =
         "inline-flex h-6 shrink-0 items-center gap-1.5 rounded-md border border-token-border/30 bg-transparent px-2 text-xs font-medium text-token-description-foreground";
-    badge.innerHTML =
-        `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" class="text-blue-500" aria-hidden="true">` +
-            `<path d="M7 1.75 11.25 3.4v3.2c0 2.6-1.65 4.25-4.25 5.4-2.6-1.15-4.25-2.8-4.25-5.4V3.4L7 1.75Z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/>` +
-            `<path d="M4.85 7.05 6.3 8.45l2.85-3.05" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>` +
-            `</svg>` +
-            `<span>Verified as safe</span>`;
+    (0, settings_svg_1.appendSvgHtml)(badge, `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" class="text-blue-500" aria-hidden="true">` +
+        `<path d="M7 1.75 11.25 3.4v3.2c0 2.6-1.65 4.25-4.25 5.4-2.6-1.15-4.25-2.8-4.25-5.4V3.4L7 1.75Z" stroke="currentColor" stroke-width="1.15" stroke-linejoin="round"/>` +
+        `<path d="M4.85 7.05 6.3 8.45l2.85-3.05" stroke="currentColor" stroke-width="1.25" stroke-linecap="round" stroke-linejoin="round"/>` +
+        `</svg>`);
+    const text = document.createElement("span");
+    text.textContent = "Verified as safe";
+    badge.appendChild(text);
     return badge;
 }
 function tweakStoreVersionBadge(entry, installedOverride) {
@@ -1908,22 +1828,26 @@ function showStoreButtonLoading(button, label) {
     button.className = storeInstallButtonClass();
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
-    button.innerHTML =
-        `<svg class="animate-spin" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">` +
-            `<circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="2" opacity=".25"/>` +
-            `<path d="M13.5 8A5.5 5.5 0 0 0 8 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>` +
-            `</svg>` +
-            `<span>${label}</span>`;
+    button.replaceChildren();
+    (0, settings_svg_1.appendSvgHtml)(button, `<svg class="animate-spin" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">` +
+        `<circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="2" opacity=".25"/>` +
+        `<path d="M13.5 8A5.5 5.5 0 0 0 8 2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>` +
+        `</svg>`);
+    const text = document.createElement("span");
+    text.textContent = label;
+    button.appendChild(text);
 }
 function showStoreButtonInstalled(button) {
     button.className = storeInstallButtonClass("border-blue-500 bg-blue-500");
     button.disabled = true;
     button.removeAttribute("aria-busy");
-    button.innerHTML =
-        `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">` +
-            `<path d="M3.75 8.15 6.65 11 12.25 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>` +
-            `</svg>` +
-            `<span>Installed</span>`;
+    button.replaceChildren();
+    (0, settings_svg_1.appendSvgHtml)(button, `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">` +
+        `<path d="M3.75 8.15 6.65 11 12.25 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>` +
+        `</svg>`);
+    const text = document.createElement("span");
+    text.textContent = "Installed";
+    button.appendChild(text);
 }
 function resetStoreInstallButton(button, label) {
     button.className = storeInstallButtonClass();
@@ -1972,9 +1896,6 @@ function storeMessageCard(title, description) {
     }
     return card;
 }
-function shortSha(value) {
-    return value.slice(0, 7);
-}
 function renderTweaksPage(sectionsWrap) {
     const openBtn = openInPlaceButton("Open Tweaks Folder", () => {
         void electron_1.ipcRenderer.invoke("codexpp:reveal", tweaksPath());
@@ -1995,11 +1916,12 @@ function renderTweaksPage(sectionsWrap) {
     // out of app" which doesn't fit. Replace its trailing svg with a refresh.
     const reloadSvg = reloadBtn.querySelector("svg");
     if (reloadSvg) {
-        reloadSvg.outerHTML =
-            `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-2xs" aria-hidden="true">` +
-                `<path d="M4 10a6 6 0 0 1 10.24-4.24L16 7.5M16 4v3.5h-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` +
-                `<path d="M16 10a6 6 0 0 1-10.24 4.24L4 12.5M4 16v-3.5h3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` +
-                `</svg>`;
+        const icon = (0, settings_svg_1.svgElement)(`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-2xs" aria-hidden="true">` +
+            `<path d="M4 10a6 6 0 0 1 10.24-4.24L16 7.5M16 4v3.5h-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+            `<path d="M16 10a6 6 0 0 1-10.24 4.24L4 12.5M4 16v-3.5h3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>` +
+            `</svg>`);
+        if (icon)
+            reloadSvg.replaceWith(icon);
     }
     const trailing = document.createElement("div");
     trailing.className = "flex items-center gap-2";
@@ -2382,11 +2304,10 @@ function openInPlaceButton(label, onClick) {
     btn.type = "button";
     btn.className =
         "border-token-border user-select-none no-drag cursor-interaction flex items-center gap-1 border whitespace-nowrap focus:outline-none disabled:cursor-not-allowed disabled:opacity-40 rounded-lg text-token-description-foreground enabled:hover:bg-token-list-hover-background data-[state=open]:bg-token-list-hover-background border-transparent h-token-button-composer px-2 py-0 text-base leading-[18px]";
-    btn.innerHTML =
-        `${label}` +
-            `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-2xs" aria-hidden="true">` +
-            `<path d="M14.3349 13.3301V6.60645L5.47065 15.4707C5.21095 15.7304 4.78895 15.7304 4.52925 15.4707C4.26955 15.211 4.26955 14.789 4.52925 14.5293L13.3935 5.66504H6.66011C6.29284 5.66504 5.99507 5.36727 5.99507 5C5.99507 4.63273 6.29284 4.33496 6.66011 4.33496H14.9999L15.1337 4.34863C15.4369 4.41057 15.665 4.67857 15.665 5V13.3301C15.6649 13.6973 15.3672 13.9951 14.9999 13.9951C14.6327 13.9951 14.335 13.6973 14.3349 13.3301Z" fill="currentColor"></path>` +
-            `</svg>`;
+    btn.textContent = label;
+    (0, settings_svg_1.appendSvgHtml)(btn, `<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-2xs" aria-hidden="true">` +
+        `<path d="M14.3349 13.3301V6.60645L5.47065 15.4707C5.21095 15.7304 4.78895 15.7304 4.52925 15.4707C4.26955 15.211 4.26955 14.789 4.52925 14.5293L13.3935 5.66504H6.66011C6.29284 5.66504 5.99507 5.36727 5.99507 5C5.99507 4.63273 6.29284 4.33496 6.66011 4.33496H14.9999L15.1337 4.34863C15.4369 4.41057 15.665 4.67857 15.665 5V13.3301C15.6649 13.6973 15.3672 13.9951 14.9999 13.9951C14.6327 13.9951 14.335 13.6973 14.3349 13.3301Z" fill="currentColor"></path>` +
+        `</svg>`);
     btn.addEventListener("click", (e) => {
         e.preventDefault();
         e.stopPropagation();
@@ -2483,38 +2404,6 @@ function dot() {
     s.textContent = "·";
     return s;
 }
-// ──────────────────────────────────────────────────────────────── icons ──
-function configIconSvg() {
-    // Sliders / settings glyph. 20x20 currentColor.
-    return (`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-sm inline-block align-middle" aria-hidden="true">` +
-        `<path d="M3 5h9M15 5h2M3 10h2M8 10h9M3 15h11M17 15h0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>` +
-        `<circle cx="13" cy="5" r="1.6" fill="currentColor"/>` +
-        `<circle cx="6" cy="10" r="1.6" fill="currentColor"/>` +
-        `<circle cx="15" cy="15" r="1.6" fill="currentColor"/>` +
-        `</svg>`);
-}
-function tweaksIconSvg() {
-    // Sparkles / "++" glyph for tweaks.
-    return (`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-sm inline-block align-middle" aria-hidden="true">` +
-        `<path d="M10 2.5 L11.4 8.6 L17.5 10 L11.4 11.4 L10 17.5 L8.6 11.4 L2.5 10 L8.6 8.6 Z" fill="currentColor"/>` +
-        `<path d="M15.5 3 L16 5 L18 5.5 L16 6 L15.5 8 L15 6 L13 5.5 L15 5 Z" fill="currentColor" opacity="0.7"/>` +
-        `</svg>`);
-}
-function storeIconSvg() {
-    return (`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-sm inline-block align-middle" aria-hidden="true">` +
-        `<path d="M4 8.2 5.1 4.5A1.5 1.5 0 0 1 6.55 3.4h6.9a1.5 1.5 0 0 1 1.45 1.1L16 8.2" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>` +
-        `<path d="M4.5 8h11v7.5A1.5 1.5 0 0 1 14 17H6a1.5 1.5 0 0 1-1.5-1.5V8Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>` +
-        `<path d="M7.5 8v1a2.5 2.5 0 0 0 5 0V8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>` +
-        `</svg>`);
-}
-function defaultPageIconSvg() {
-    // Document/page glyph for tweak-registered pages without their own icon.
-    return (`<svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg" class="icon-sm inline-block align-middle" aria-hidden="true">` +
-        `<path d="M5 3h7l3 3v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>` +
-        `<path d="M12 3v3a1 1 0 0 0 1 1h2" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>` +
-        `<path d="M7 11h6M7 14h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>` +
-        `</svg>`);
-}
 async function resolveIconUrl(url, tweakDir) {
     if (/^(https?:|data:)/.test(url))
         return url;
@@ -2531,6 +2420,9 @@ async function resolveIconUrl(url, tweakDir) {
 }
 // ─────────────────────────────────────────────────────── DOM heuristics ──
 function findSidebarItemsGroup() {
+    const cached = cachedSidebarItemsGroup();
+    if (cached)
+        return cached;
     const candidates = Array.from(document.querySelectorAll("aside,nav,[role='navigation'],div"));
     let best = null;
     let bestScore = -1;
@@ -2538,10 +2430,10 @@ function findSidebarItemsGroup() {
     for (const candidate of candidates) {
         if (candidate.dataset.codexpp)
             continue;
-        if (!isSettingsSidebarCandidate(candidate))
+        if (!(0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(candidate))
             continue;
-        const labels = codexPpSettingsLabelsFrom(candidate);
-        const score = codexPpSettingsLabelScore(labels);
+        const labels = (0, settings_dom_heuristics_1.codexPpSettingsLabelsFrom)(candidate);
+        const score = (0, settings_dom_heuristics_1.codexPpSettingsLabelScore)(labels);
         const rect = candidate.getBoundingClientRect();
         const area = rect.width * rect.height;
         const weighted = score.core * 100 + score.total;
@@ -2553,42 +2445,21 @@ function findSidebarItemsGroup() {
     }
     return best;
 }
-const FORBIDDEN_SETTINGS_SIDEBAR_SELECTOR = [
-    "[data-composer-overlay-floating-ui='true']",
-    "[data-codexpp-slash-menu='true']",
-    "[data-codexpp-overlay-noise='true']",
-    ".composer-home-top-menu",
-    ".vertical-scroll-fade-mask",
-    "[class*='[container-name:home-main-content]']",
-].join(",");
-function isForbiddenSettingsSidebarSurface(node) {
-    if (!node)
-        return false;
-    const el = node instanceof HTMLElement ? node : node.parentElement;
-    if (!el)
-        return false;
-    if (el.closest(FORBIDDEN_SETTINGS_SIDEBAR_SELECTOR))
-        return true;
-    if (el.querySelector("[data-list-navigation-item='true'], [cmdk-item]"))
-        return true;
-    return false;
-}
-function isSettingsSidebarCandidate(el) {
-    const rect = codexPpVisibleBox(el);
-    if (!rect)
-        return false;
-    // Current Codex Settings sidebar: left column, not the main content panel.
-    if (rect.width < 120 || rect.width > 620)
-        return false;
-    if (rect.height < 80)
-        return false;
-    if (rect.left > window.innerWidth * 0.65)
-        return false;
-    const labels = codexPpSettingsLabelsFrom(el);
-    if (hasMainAppSidebarSignals(labels) && !hasCodexPpSettingsOnlySignal(labels)) {
-        return false;
+function cachedSidebarItemsGroup() {
+    const candidates = [
+        state.sidebarRoot,
+        state.navGroup?.parentElement ?? null,
+        state.pagesGroup?.parentElement ?? null,
+    ];
+    for (const candidate of candidates) {
+        if (!candidate)
+            continue;
+        if (!candidate.isConnected)
+            continue;
+        if ((0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(candidate))
+            return candidate;
     }
-    return isCodexPpSettingsLabelSet(labels);
+    return null;
 }
 function removeMisplacedSettingsGroups() {
     const groups = document.querySelectorAll("[data-codexpp='nav-group'], [data-codexpp='pages-group'], [data-codexpp='native-nav-header']");
@@ -2600,13 +2471,13 @@ function removeMisplacedSettingsGroups() {
     }
 }
 function isCodexPpInjectedSettingsGroupPlacementValid(group) {
-    if (isForbiddenSettingsSidebarSurface(group))
+    if ((0, settings_dom_heuristics_1.isForbiddenSettingsSidebarSurface)(group))
         return false;
     let node = group.parentElement;
     for (let depth = 0; node && depth < 4; depth++) {
-        if (isForbiddenSettingsSidebarSurface(node))
+        if ((0, settings_dom_heuristics_1.isForbiddenSettingsSidebarSurface)(node))
             return false;
-        if (isSettingsSidebarCandidate(node))
+        if ((0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(node))
             return true;
         node = node.parentElement;
     }
@@ -2653,8 +2524,10 @@ function maybeDumpDom() {
         const sidebar = findSidebarItemsGroup();
         if (sidebar && !state.sidebarDumped) {
             state.sidebarDumped = true;
-            const sbRoot = sidebar.parentElement ?? sidebar;
-            plog(`codex sidebar HTML`, sbRoot.outerHTML.slice(0, 32000));
+            if (isSettingsDomDumpEnabled()) {
+                const sbRoot = sidebar.parentElement ?? sidebar;
+                plog(`codex sidebar HTML`, sbRoot.outerHTML.slice(0, 32000));
+            }
         }
         const content = findContentArea();
         if (!content) {
@@ -2693,7 +2566,7 @@ function maybeDumpDom() {
             heading: heading?.textContent?.trim() ?? null,
             content: describe(content),
         });
-        if (panel) {
+        if (panel && isSettingsDomDumpEnabled()) {
             const html = panel.outerHTML;
             plog(`codex panel HTML (${activeNav?.textContent?.trim() ?? "?"})`, html.slice(0, 32000));
         }
@@ -2701,6 +2574,9 @@ function maybeDumpDom() {
     catch (e) {
         plog("dom probe failed", String(e));
     }
+}
+function isSettingsDomDumpEnabled() {
+    return window.__codexppDumpSettingsDom === true;
 }
 function describe(el) {
     return {

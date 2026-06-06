@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 import { locateCodex, type CodexInstall } from "../platform.js";
 import { ensureUserPaths } from "../paths.js";
 import { backupOnce, patchAsar, readFileInAsar, readHeaderHash } from "../asar.js";
-import { setIntegrity, getIntegrity } from "../integrity.js";
+import { setIntegrity } from "../integrity.js";
 import { writeFuse } from "../fuses.js";
 import { clearQuarantine, prepareCodeSigning, signCodexApp, signatureInfo } from "../codesign.js";
 import { readPlist } from "../plist.js";

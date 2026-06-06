@@ -493,6 +493,7 @@ avoid path traversal.
 ```ts
 interface CodexApi {
   runtime: CodexRuntimeApi;
+  sidebar?: CodexSidebarApi;
   windows: CodexWindowsApi;
   views: CodexViewsApi;
   cdp: CodexCdpApi;
@@ -512,6 +513,62 @@ currently observes.
 
 `createWindow()` and `createBrowserView()` are kept for backwards
 compatibility. Prefer the namespaced APIs for new tweaks.
+
+## `CodexSidebarApi`
+
+Renderer-only. `api.codex.sidebar` registers actions in Codex's main app
+sidebar, near native actions such as New chat, Search, Plugins, and
+Automations. Codex++ clones the current native sidebar action shape, so the
+button follows Codex theme, font, density, and future class changes better than
+hand-authored tweak CSS.
+
+```ts
+interface CodexSidebarApi {
+  registerAction(options: CodexSidebarActionOptions): CodexSidebarActionRef;
+}
+
+interface CodexSidebarActionOptions {
+  id: string;
+  label: string;
+  tooltip?: string;
+  iconSvg?: string;
+  order?: number;
+  active?: boolean;
+  onClick?: (event: MouseEvent) => void | Promise<void>;
+}
+
+interface CodexSidebarActionRef {
+  id: string;
+  update(update: CodexSidebarActionUpdate): void;
+  setActive(active: boolean): void;
+  dispose(): void;
+}
+```
+
+Example:
+
+```js
+let homeAction;
+
+module.exports = {
+  start(api) {
+    homeAction = api.codex.sidebar.registerAction({
+      id: "home",
+      label: "Home",
+      iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 11.5 12 5l8 6.5"/><path d="M6 10.5V20h12v-9.5"/></svg>',
+      onClick() {
+        homeAction.setActive(true);
+      },
+    });
+  },
+  stop() {
+    homeAction?.dispose();
+  },
+};
+```
+
+Relative placement is controlled by `order`; lower values appear earlier among
+Codex++ sidebar actions. Dispose long-lived actions from `stop()`.
 
 ## `CodexRuntimeType`
 

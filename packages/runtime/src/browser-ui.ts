@@ -255,7 +255,7 @@ async function handleHttpRequest(req: IncomingMessage, res: ServerResponse): Pro
   }
 
   if (url.pathname === "/" || url.pathname === "/index.html") {
-    const html = await browserIndexHtml(options);
+    const html = await browserIndexHtml();
     sendBuffer(res, 200, Buffer.from(html), MIME_TYPES[".html"], req.method === "HEAD");
     return;
   }
@@ -290,7 +290,7 @@ async function handleUpgrade(req: IncomingMessage, socket: Socket, head: Buffer)
   bridgeMessagePortToWebSocket(port1, ws);
 }
 
-async function browserIndexHtml(options: BrowserUiServerOptions): Promise<string> {
+async function browserIndexHtml(): Promise<string> {
   const indexPath = join(webviewRoot(), "index.html");
   let html = relaxBrowserUiCsp(readFileSync(indexPath, "utf8"));
   const shim = `<script src="/codexpp/browser-ui/bridge.js"></script>`;

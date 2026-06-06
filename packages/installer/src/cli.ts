@@ -99,6 +99,8 @@ async function runDevTweak(target: string | undefined, opts: never): Promise<voi
 function maybeShowPatchFailedAlert(message: string): void {
   const command = process.argv[2];
   if (command !== "repair") return;
+  if (process.argv.includes("--watcher") || process.argv.includes("--quiet")) return;
+  if (process.env.CODEX_PLUSPLUS_WATCHER === "1") return;
   showPatchFailedAlert(message);
 }
 

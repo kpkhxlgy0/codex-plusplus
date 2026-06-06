@@ -65,6 +65,23 @@ TypeScript or ESM `import` / `export` syntax unless you bundle it first to
 runtime-loadable JavaScript. `module.exports`, `exports.foo`, and
 `module.exports.default` are supported.
 
+Renderer entries can `require()` relative CommonJS or JSON files inside the
+same tweak directory:
+
+```js
+const { render } = require("./src/render");
+const defaults = require("./defaults.json");
+
+module.exports = {
+  start(api) {
+    render(api, defaults);
+  },
+};
+```
+
+Relative module paths are confined to the tweak directory. Package imports and
+Node built-ins in renderer tweaks still need to be bundled.
+
 ## Minimal Renderer Tweak
 
 `manifest.json`:

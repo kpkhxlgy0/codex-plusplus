@@ -3,7 +3,26 @@
 The runtime loads JavaScript from tweak entry files. It does not transpile
 TypeScript, JSX, or raw ESM imports at runtime.
 
-Use `@codex-plusplus/sdk` for types, then bundle to CommonJS.
+Use `@codex-plusplus/sdk` for types, then bundle to CommonJS when you use
+TypeScript, JSX, ESM `import` / `export`, npm dependencies, or renderer-side
+Node built-ins.
+
+Plain JavaScript renderer tweaks can be split across relative CommonJS or JSON
+files without a bundle step:
+
+```js
+// index.js
+const { render } = require("./src/render");
+const defaults = require("./defaults.json");
+
+module.exports = {
+  start(api) {
+    render(api, defaults);
+  },
+};
+```
+
+Relative `require()` paths are restricted to files inside the tweak directory.
 
 ## Install Dev Dependencies
 
@@ -82,8 +101,8 @@ export default defineTweak({
 
 If renderer and main need different dependencies, keep the manifest entry as a
 small CommonJS file. The main branch can `require()` Node/main bundles; the
-renderer branch must be self-contained because sandboxed renderer tweaks cannot
-`require()` sibling files.
+renderer branch can `require()` relative CommonJS/JSON files inside the tweak
+directory. Bundle renderer dependencies that are not local files.
 
 ```js
 module.exports = {
@@ -92,14 +111,7 @@ module.exports = {
       return require("./dist/main.cjs").start(api);
     }
 
-    // Renderer-safe code only here, or paste/bundle renderer code into this file.
-    api.settings.registerPage({
-      id: "main",
-      title: api.manifest.name,
-      render(root) {
-        root.textContent = "Renderer half loaded.";
-      },
-    });
+    return require("./src/renderer").start(api);
   },
   stop() {
     // Delegate if needed.

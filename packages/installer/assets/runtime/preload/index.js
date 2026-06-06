@@ -47,7 +47,10 @@ function desktopWorkerForViewChannel(workerId) {
 function fileLog(stage, extra) {
     const msg = `[codex-plusplus preload] ${stage}${extra === undefined ? "" : " " + safeStringify(extra)}`;
     try {
-        console.error(msg);
+        if (stage.includes("FAILED"))
+            console.error(msg);
+        else
+            console.info(msg);
     }
     catch { }
     try {

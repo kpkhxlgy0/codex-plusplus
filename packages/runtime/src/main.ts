@@ -53,9 +53,15 @@ import {
   type TweakStorePublishSubmission,
   type TweakStoreEntry,
   type TweakStoreRegistry,
-  type TweakStorePlatform,
 } from "./tweak-store";
 import { maybeStartBrowserUiServer } from "./browser-ui";
+import { compareVersions, normalizeVersion } from "./version-utils";
+import {
+  assertStoreEntryPlatformCompatible,
+  assertStoreEntryRuntimeCompatible,
+  storeEntryPlatformCompatibility,
+  storeEntryRuntimeCompatibility,
+} from "./tweak-store-compat";
 
 const userRoot = process.env.CODEX_PLUSPLUS_USER_ROOT;
 const runtimeDir = process.env.CODEX_PLUSPLUS_RUNTIME;
@@ -76,10 +82,13 @@ const INSTALLER_STATE_FILE = join(userRoot, "state.json");
 const UPDATE_MODE_FILE = join(userRoot, "update-mode.json");
 const SELF_UPDATE_STATE_FILE = join(userRoot, "self-update-state.json");
 const SIGNED_CODEX_BACKUP = join(userRoot, "backup", "Codex.app");
-const CODEX_PLUSPLUS_VERSION = "1.0.0";
+const CODEX_PLUSPLUS_CLI_SHIM = join(userRoot, "bin", process.platform === "win32" ? "codexplusplus.cmd" : "codexplusplus");
+const POST_UPDATE_REPAIR_LOG_FILE = join(LOG_DIR, "post-update-repair.log");
+const CODEX_PLUSPLUS_VERSION = "1.0.1";
 const CODEX_PLUSPLUS_REPO = "b-nnett/codex-plusplus";
 const TWEAK_STORE_INDEX_URL = process.env.CODEX_PLUSPLUS_STORE_INDEX_URL ?? DEFAULT_TWEAK_STORE_INDEX_URL;
 const CODEX_WINDOW_SERVICES_KEY = "__codexpp_window_services__";
+const DEBUG_WEB_CONTENTS_LOG = process.env.CODEXPP_DEBUG_WEB_CONTENTS === "1";
 
 mkdirSync(LOG_DIR, { recursive: true });
 mkdirSync(TWEAKS_DIR, { recursive: true });
@@ -326,6 +335,7 @@ function prepareSignedCodexForSparkleInstall(): void {
     codexVersion: state?.codexVersion ?? null,
   };
   writeFileSync(UPDATE_MODE_FILE, JSON.stringify(mode, null, 2));
+  startPostUpdateRepairMonitor();
 
   try {
     execFileSync("ditto", [SIGNED_CODEX_BACKUP, appRoot], { stdio: "ignore" });
@@ -338,6 +348,59 @@ function prepareSignedCodexForSparkleInstall(): void {
       message: (e as Error).message,
     });
   }
+}
+
+function startPostUpdateRepairMonitor(): void {
+  if (process.platform !== "darwin") return;
+  if (!existsSync(CODEX_PLUSPLUS_CLI_SHIM)) {
+    log("warn", "Post-update repair monitor skipped; Codex++ CLI shim is missing", {
+      shim: CODEX_PLUSPLUS_CLI_SHIM,
+    });
+    return;
+  }
+
+  try {
+    const child = spawn("/bin/sh", ["-c", `${postUpdateRepairScript()} >> ${shellQuote(POST_UPDATE_REPAIR_LOG_FILE)} 2>&1`], {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    log("info", "Started Codex++ post-update repair monitor", {
+      log: POST_UPDATE_REPAIR_LOG_FILE,
+    });
+  } catch (e) {
+    log("warn", "Post-update repair monitor failed to start", {
+      message: (e as Error).message,
+    });
+  }
+}
+
+export function postUpdateRepairScript(): string {
+  const repairCommand = [
+    "CODEX_PLUSPLUS_WATCHER=1",
+    shellQuote(CODEX_PLUSPLUS_CLI_SHIM),
+    "repair",
+    "--watcher",
+    "--quiet",
+    "--local",
+  ].join(" ");
+  const doctorCommand = `${shellQuote(CODEX_PLUSPLUS_CLI_SHIM)} doctor >/dev/null 2>&1`;
+  return [
+    "set -u",
+    `echo "[$(date)] Codex++ post-update repair monitor started"`,
+    "sleep 20",
+    "deadline=$(( $(date +%s) + 900 ))",
+    "while [ $(date +%s) -lt $deadline ]; do",
+    `  ${repairCommand} || true`,
+    `  if [ ! -f ${shellQuote(UPDATE_MODE_FILE)} ] && ${doctorCommand}; then`,
+    `    echo "[$(date)] Codex++ post-update repair completed"`,
+    "    exit 0",
+    "  fi",
+    "  sleep 20",
+    "done",
+    `echo "[$(date)] Codex++ post-update repair timed out"`,
+    "exit 1",
+  ].join("\n");
 }
 
 function isDeveloperIdSignedApp(appRoot: string): boolean {
@@ -520,19 +583,19 @@ app.on("session-created", (s) => {
   registerPreload(s, "session-created");
 });
 
-// DIAGNOSTIC: log every webContents creation. Useful for verifying our
-// preload reaches every renderer Codex spawns.
 app.on("web-contents-created", (_e, wc) => {
   try {
-    const wp = (wc as unknown as { getLastWebPreferences?: () => Record<string, unknown> })
-      .getLastWebPreferences?.();
-    log("info", "web-contents-created", {
-      id: wc.id,
-      type: wc.getType(),
-      sessionIsDefault: wc.session === session.defaultSession,
-      sandbox: wp?.sandbox,
-      contextIsolation: wp?.contextIsolation,
-    });
+    if (DEBUG_WEB_CONTENTS_LOG) {
+      const wp = (wc as unknown as { getLastWebPreferences?: () => Record<string, unknown> })
+        .getLastWebPreferences?.();
+      log("info", "web-contents-created", {
+        id: wc.id,
+        type: wc.getType(),
+        sessionIsDefault: wc.session === session.defaultSession,
+        sandbox: wp?.sandbox,
+        contextIsolation: wp?.contextIsolation,
+      });
+    }
     wc.on("preload-error", (_ev, p, err) => {
       log("error", `wc ${wc.id} preload-error path=${p}`, String(err?.stack ?? err));
     });
@@ -648,7 +711,7 @@ ipcMain.handle("codexpp:get-tweak-store", async () => {
     entries: entries.map((entry) => {
       const local = installed.get(entry.id);
       const platform = storeEntryPlatformCompatibility(entry);
-      const runtime = storeEntryRuntimeCompatibility(entry);
+      const runtime = storeEntryRuntimeCompatibility(entry, CODEX_PLUSPLUS_VERSION);
       return {
         ...entry,
         platform,
@@ -669,7 +732,7 @@ ipcMain.handle("codexpp:install-store-tweak", async (_e, id: string) => {
   const entry = registry.entries.find((candidate) => candidate.id === id);
   if (!entry) throw new Error(`Tweak store entry not found: ${id}`);
   assertStoreEntryPlatformCompatible(entry);
-  assertStoreEntryRuntimeCompatible(entry);
+  assertStoreEntryRuntimeCompatible(entry, CODEX_PLUSPLUS_VERSION);
   await installStoreTweak(entry);
   reloadTweaks("store-install", tweakLifecycleDeps);
   return { installed: entry.id };
@@ -682,12 +745,27 @@ ipcMain.handle("codexpp:prepare-tweak-store-submission", async (_e, repoInput: s
 // Sandboxed renderer preload can't use Node fs to read tweak source. Main
 // reads it on the renderer's behalf. Path must live under tweaksDir for
 // security — we refuse anything else.
-ipcMain.handle("codexpp:read-tweak-source", (_e, entryPath: string) => {
+function readTweakSource(entryPath: string): string {
   const resolved = resolve(entryPath);
   if (!isPathInside(TWEAKS_DIR, resolved)) {
     throw new Error("path outside tweaks dir");
   }
   return require("node:fs").readFileSync(resolved, "utf8");
+}
+
+ipcMain.handle("codexpp:read-tweak-source", (_e, entryPath: string) => {
+  return readTweakSource(entryPath);
+});
+
+ipcMain.on("codexpp:read-tweak-source-sync", (event, entryPath: string) => {
+  try {
+    event.returnValue = { ok: true, source: readTweakSource(entryPath) };
+  } catch (error) {
+    event.returnValue = {
+      ok: false,
+      error: String((error as Error)?.message ?? error),
+    };
+  }
 });
 
 /**
@@ -1028,8 +1106,6 @@ function safeRealpath(filePath: string): string {
 }
 
 const UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const VERSION_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/;
-
 async function ensureCodexPlusPlusUpdateCheck(force = false): Promise<CodexPlusPlusUpdateCheck> {
   const state = readState();
   const cached = state.codexPlusPlus?.updateCheck;
@@ -1155,20 +1231,6 @@ interface StoreInstallMetadata {
   files?: Record<string, string>;
 }
 
-interface StoreEntryPlatformCompatibility {
-  current: NodeJS.Platform;
-  supported: TweakStorePlatform[] | null;
-  compatible: boolean;
-  reason: string | null;
-}
-
-interface StoreEntryRuntimeCompatibility {
-  current: string;
-  required: string | null;
-  compatible: boolean;
-  reason: string | null;
-}
-
 class StoreTweakModifiedError extends Error {
   constructor(tweakName: string) {
     super(
@@ -1176,59 +1238,6 @@ class StoreTweakModifiedError extends Error {
     );
     this.name = "StoreTweakModifiedError";
   }
-}
-
-function storeEntryPlatformCompatibility(entry: TweakStoreEntry): StoreEntryPlatformCompatibility {
-  const supported = entry.platforms ?? null;
-  const compatible = !supported || supported.includes(process.platform as TweakStorePlatform);
-  return {
-    current: process.platform,
-    supported,
-    compatible,
-    reason: compatible ? null : `${entry.manifest.name} is only available on ${formatStorePlatforms(supported)}.`,
-  };
-}
-
-function assertStoreEntryPlatformCompatible(entry: TweakStoreEntry): void {
-  const platform = storeEntryPlatformCompatibility(entry);
-  if (!platform.compatible) {
-    throw new Error(platform.reason ?? `${entry.manifest.name} is not available on this platform.`);
-  }
-}
-
-function storeEntryRuntimeCompatibility(entry: TweakStoreEntry): StoreEntryRuntimeCompatibility {
-  const required = cleanMinRuntime(entry.manifest.minRuntime);
-  const compatible = !required || compareVersions(CODEX_PLUSPLUS_VERSION, required) >= 0;
-  return {
-    current: CODEX_PLUSPLUS_VERSION,
-    required,
-    compatible,
-    reason: compatible || !required
-      ? null
-      : `${entry.manifest.name} requires Codex++ ${required} or newer.`,
-  };
-}
-
-function assertStoreEntryRuntimeCompatible(entry: TweakStoreEntry): void {
-  const runtime = storeEntryRuntimeCompatibility(entry);
-  if (!runtime.compatible) {
-    throw new Error(runtime.reason ?? `${entry.manifest.name} requires a newer Codex++ runtime.`);
-  }
-}
-
-function cleanMinRuntime(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const version = normalizeVersion(value.replace(/^>=?\s*/, ""));
-  return VERSION_RE.test(version) ? version : null;
-}
-
-function formatStorePlatforms(platforms: TweakStorePlatform[] | null): string {
-  if (!platforms || platforms.length === 0) return "supported platforms";
-  return platforms.map((platform) => {
-    if (platform === "darwin") return "macOS";
-    if (platform === "win32") return "Windows";
-    return "Linux";
-  }).join(", ");
 }
 
 async function fetchTweakStoreRegistry(): Promise<TweakStoreFetchResult> {
@@ -1506,21 +1515,6 @@ function sameFileHashes(a: Record<string, string>, b: Record<string, string>): b
 function isHashRecord(value: unknown): value is Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   return Object.values(value as Record<string, unknown>).every((v) => typeof v === "string");
-}
-
-function normalizeVersion(v: string): string {
-  return v.trim().replace(/^v/i, "");
-}
-
-function compareVersions(a: string, b: string): number {
-  const av = VERSION_RE.exec(a);
-  const bv = VERSION_RE.exec(b);
-  if (!av || !bv) return 0;
-  for (let i = 1; i <= 3; i++) {
-    const diff = Number(av[i]) - Number(bv[i]);
-    if (diff !== 0) return diff;
-  }
-  return 0;
 }
 
 function fallbackSourceRoot(): string | null {

@@ -2,17 +2,17 @@
  * Settings injector for Codex's Settings page.
  *
  * Codex's settings is a routed page (URL stays at `/index.html?hostId=local`)
- * NOT a modal dialog. The sidebar lives inside a `<div class="flex flex-col
- * gap-1 gap-0">` wrapper that holds one or more `<div class="flex flex-col
- * gap-px">` groups of buttons. There are no stable `role` / `aria-label` /
- * `data-testid` hooks on the shell so we identify the sidebar by text-content
- * match against known item labels (General, Appearance, Configuration, …).
+ * NOT a modal dialog. The sidebar is a grouped settings nav (Personal,
+ * Integrations, Coding, Archived) with native section headers above stacks of
+ * buttons. There are no stable `role` / `aria-label` / `data-testid` hooks on
+ * the shell so we identify the sidebar by text-content match against known item
+ * labels (General, Appearance, Configuration, …).
  *
  * Layout we inject:
  *
- *   GENERAL                       (uppercase group label)
+ *   Personal                      (native Codex group label)
  *   [Codex's existing items group]
- *   CODEX++                       (uppercase group label)
+ *   Codex++                       (native Codex group label)
  *   ⓘ Config
  *   ☰ Tweaks
  *   ◇ Tweak Store

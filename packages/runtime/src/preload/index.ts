@@ -53,7 +53,8 @@ function fileLog(stage: string, extra?: unknown): void {
     extra === undefined ? "" : " " + safeStringify(extra)
   }`;
   try {
-    console.error(msg);
+    if (stage.includes("FAILED")) console.error(msg);
+    else console.info(msg);
   } catch {}
   try {
     ipcRenderer.send("codexpp:preload-log", "info", msg);

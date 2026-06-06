@@ -132,12 +132,6 @@ function parseCdpPort(value) {
     const parsed = Number(value ?? "9222");
     return Number.isInteger(parsed) && parsed > 0 && parsed < 65536 ? parsed : 9222;
 }
-function hasNativeWindowHandles() {
-    const focused = electron_1.BrowserWindow.getFocusedWindow();
-    if (focused && typeof focused.getNativeWindowHandle === "function")
-        return true;
-    return typeof electron_1.BrowserWindow.fromId === "function";
-}
 function defaultNativeCapabilities() {
     return {
         inProcessModules: true,

@@ -35,7 +35,7 @@ import {
 } from "../src/codex-window-services";
 import { readSelfUpdateState, writeSelfUpdateState } from "../src/self-update-state";
 import { describeInstallationSource } from "../src/source-root";
-import { watcherShellScript } from "../src/watcher";
+import { launchdWatchPaths, watcherShellScript } from "../src/watcher";
 
 test("createTweak scaffolds a both-scope tweak", () => {
   withTempDir((root) => {
@@ -446,6 +446,17 @@ test("watcher runs self-update and app repair as separate steps", () => {
   assert.match(script, /update --watcher --quiet --no-repair/);
   assert.match(script, /repair --watcher --quiet/);
   assert.match(script, /update[\s\S]+\|\| true;[\s\S]+repair/);
+  assert.doesNotMatch(script, /repair --watcher --quiet[\s\S]+\|\| true/);
+});
+
+test("launchd watcher observes the bundle paths Sparkle replaces", () => {
+  assert.deepEqual(launchdWatchPaths("/Applications/Codex.app"), [
+    "/Applications/Codex.app",
+    "/Applications/Codex.app/Contents",
+    "/Applications/Codex.app/Contents/Info.plist",
+    "/Applications/Codex.app/Contents/Resources",
+    "/Applications/Codex.app/Contents/Resources/app.asar",
+  ]);
 });
 
 test("launchd watcher script clears stale log entries before each run", () => {
@@ -454,6 +465,7 @@ test("launchd watcher script clears stale log entries before each run", () => {
   assert.match(script, /^: > '\/tmp\/codex plusplus\/watch'\\''er\.log'; sleep 3; /);
   assert.match(script, /update --watcher --quiet --no-repair/);
   assert.match(script, /repair --watcher --quiet/);
+  assert.doesNotMatch(script, /repair --watcher --quiet[\s\S]+\|\| true/);
 });
 
 test("self-update marks the installed CLI executable on unix", () => {
@@ -489,6 +501,31 @@ test("repair keeps local signing opt-in", () => {
 
   assert.match(source, /localSigning:\s*opts\.localSigning === true/);
   assert.doesNotMatch(source, /state\.signingMode === "local-identity"/);
+});
+
+test("watcher repair can re-patch a running Codex without manual repair", () => {
+  const source = readFileSync(new URL("../src/commands/repair.ts", import.meta.url), "utf8");
+
+  assert.match(source, /isWatcherRepair\(opts\)/);
+  assert.match(source, /quitCodex\(codex\.appRoot\)/);
+  assert.match(source, /reopenAfterRepair = true/);
+});
+
+test("watcher repair does not show update-mode UI", () => {
+  const source = readFileSync(new URL("../src/commands/repair.ts", import.meta.url), "utf8");
+
+  assert.match(source, /function shouldShowUpdateUi\(opts: Opts\): boolean/);
+  assert.match(source, /return !opts\.quiet && !isWatcherRepair\(opts\)/);
+  assert.match(source, /if \(shouldShowUpdateUi\(opts\)\) \{/);
+  assert.match(source, /if \(shouldShowUpdateUi\(opts\) && !updateMode\.notifiedAt\)/);
+});
+
+test("watcher repair failures do not show manual repair alerts", () => {
+  const source = readFileSync(new URL("../src/cli.ts", import.meta.url), "utf8");
+
+  assert.match(source, /process\.argv\.includes\("--watcher"\) \|\| process\.argv\.includes\("--quiet"\)/);
+  assert.match(source, /process\.env\.CODEX_PLUSPLUS_WATCHER === "1"/);
+  assert.match(source, /showPatchFailedAlert\(message\)/);
 });
 
 test("cli documents local signing and safe mode recovery", () => {

@@ -147,12 +147,6 @@ function parseCdpPort(value: string | undefined): number {
   return Number.isInteger(parsed) && parsed > 0 && parsed < 65536 ? parsed : 9222;
 }
 
-function hasNativeWindowHandles(): boolean {
-  const focused = BrowserWindow.getFocusedWindow();
-  if (focused && typeof focused.getNativeWindowHandle === "function") return true;
-  return typeof BrowserWindow.fromId === "function";
-}
-
 function defaultNativeCapabilities(): CodexRuntimeCapabilities["native"] {
   return {
     inProcessModules: true,

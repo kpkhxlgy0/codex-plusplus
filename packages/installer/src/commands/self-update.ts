@@ -414,16 +414,6 @@ function rollbackSource(sourceRoot: string, previous: string): void {
   renameSync(previous, sourceRoot);
 }
 
-function isAutoUpdateEnabled(configFile: string): boolean {
-  if (!existsSync(configFile)) return true;
-  try {
-    const config = JSON.parse(readFileSync(configFile, "utf8")) as RuntimeConfig;
-    return config.codexPlusPlus?.autoUpdate !== false;
-  } catch {
-    return true;
-  }
-}
-
 function log(opts: Opts, message: string): void {
   if (!opts.quiet) console.log(message);
 }

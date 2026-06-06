@@ -59,11 +59,7 @@ export async function mountManager(): Promise<void> {
         const li = document.createElement("li");
         li.style.cssText =
           "display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border:1px solid var(--border,#2a2a2a);border-radius:6px;";
-        const left = document.createElement("div");
-        left.innerHTML = `
-          <div style="font:600 13px system-ui;">${escape(t.manifest.name)} <span style="color:#888;font-weight:400;">v${escape(t.manifest.version)}</span></div>
-          <div style="color:#888;font:12px system-ui;">${escape(t.manifest.description ?? t.manifest.id)}</div>
-        `;
+        const left = tweakSummary(t);
         const right = document.createElement("div");
         right.style.cssText = "color:#888;font:12px system-ui;";
         right.textContent = t.entryExists ? "loaded" : "missing entry";
@@ -85,16 +81,24 @@ function button(label: string, onclick: () => void): HTMLButtonElement {
   return b;
 }
 
-function escape(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    c === "&"
-      ? "&amp;"
-      : c === "<"
-        ? "&lt;"
-        : c === ">"
-          ? "&gt;"
-          : c === '"'
-            ? "&quot;"
-            : "&#39;",
-  );
+function tweakSummary(tweak: {
+  manifest: { id: string; name: string; version: string; description?: string };
+}): HTMLElement {
+  const left = document.createElement("div");
+
+  const title = document.createElement("div");
+  title.style.cssText = "font:600 13px system-ui;";
+  title.append(document.createTextNode(tweak.manifest.name + " "));
+
+  const version = document.createElement("span");
+  version.style.cssText = "color:#888;font-weight:400;";
+  version.textContent = `v${tweak.manifest.version}`;
+  title.appendChild(version);
+
+  const description = document.createElement("div");
+  description.style.cssText = "color:#888;font:12px system-ui;";
+  description.textContent = tweak.manifest.description ?? tweak.manifest.id;
+
+  left.append(title, description);
+  return left;
 }

@@ -18,12 +18,13 @@ exports.teardownTweakHost = teardownTweakHost;
 const electron_1 = require("electron");
 const settings_injector_1 = require("./settings-injector");
 const react_hook_1 = require("./react-hook");
+const element_waiter_1 = require("./element-waiter");
+const tweak_module_loader_1 = require("./tweak-module-loader");
+const main_sidebar_actions_1 = require("./main-sidebar-actions");
 const loaded = new Map();
-let cachedPaths = null;
 async function startTweakHost() {
     const tweaks = (await electron_1.ipcRenderer.invoke("codexpp:list-tweaks"));
     const paths = (await electron_1.ipcRenderer.invoke("codexpp:user-paths"));
-    cachedPaths = paths;
     // Push the list to the settings injector so the Tweaks page can render
     // cards even before any tweak's start() runs (and for disabled tweaks
     // that we never load).
@@ -68,9 +69,11 @@ function teardownTweakHost() {
         finally {
             void electron_1.ipcRenderer.invoke("codexpp:codex-view-dispose-tweak", id).catch(() => { });
             void electron_1.ipcRenderer.invoke("codexpp:native-dispose-tweak", id).catch(() => { });
+            (0, main_sidebar_actions_1.disposeSidebarActionsForTweak)(id);
         }
     }
     loaded.clear();
+    (0, element_waiter_1.cancelAllElementWaiters)("tweak host teardown");
     (0, settings_injector_1.clearSections)();
 }
 async function loadTweak(t, paths) {
@@ -78,12 +81,15 @@ async function loadTweak(t, paths) {
     // Evaluate as CJS-shaped: provide module/exports/api. Tweak code may use
     // `module.exports = { start, stop }` or `exports.start = ...` or pure ESM
     // default export shape (we accept both).
-    const module = { exports: {} };
-    const exports = module.exports;
-    // eslint-disable-next-line @typescript-eslint/no-implied-eval, no-new-func
-    const fn = new Function("module", "exports", "console", `${source}\n//# sourceURL=codexpp-tweak://${encodeURIComponent(t.manifest.id)}/${encodeURIComponent(t.entry)}`);
-    fn(module, exports, console);
-    const mod = module.exports;
+    const loader = (0, tweak_module_loader_1.createTweakModuleLoader)({
+        manifestId: t.manifest.id,
+        entry: t.entry,
+        dir: t.dir,
+        readSource: readTweakSourceSync,
+        fallbackRequire: rendererFallbackRequire,
+        console,
+    });
+    const mod = loader.loadEntry(source);
     const tweak = mod.default ?? mod;
     if (typeof tweak?.start !== "function") {
         throw new Error(`tweak ${t.manifest.id} has no start()`);
@@ -91,6 +97,18 @@ async function loadTweak(t, paths) {
     const api = makeRendererApi(t.manifest, paths);
     await tweak.start(api);
     loaded.set(t.manifest.id, { stop: tweak.stop?.bind(tweak) });
+}
+function readTweakSourceSync(entryPath) {
+    const result = electron_1.ipcRenderer.sendSync("codexpp:read-tweak-source-sync", entryPath);
+    if (result?.ok === true)
+        return result.source;
+    throw new Error(result?.error || `Unable to read tweak source: ${entryPath}`);
+}
+function rendererFallbackRequire(request) {
+    const fallback = globalThis.require;
+    if (typeof fallback === "function")
+        return fallback(request);
+    throw new Error(`Renderer tweak require only supports relative files; bundle dependency "${request}" into the tweak entry`);
 }
 function makeRendererApi(manifest, paths) {
     const id = manifest.id;
@@ -147,24 +165,7 @@ function makeRendererApi(manifest, paths) {
                 }
                 return null;
             },
-            waitForElement: (sel, timeoutMs = 5000) => new Promise((resolve, reject) => {
-                const existing = document.querySelector(sel);
-                if (existing)
-                    return resolve(existing);
-                const deadline = Date.now() + timeoutMs;
-                const obs = new MutationObserver(() => {
-                    const el = document.querySelector(sel);
-                    if (el) {
-                        obs.disconnect();
-                        resolve(el);
-                    }
-                    else if (Date.now() > deadline) {
-                        obs.disconnect();
-                        reject(new Error(`timeout waiting for ${sel}`));
-                    }
-                });
-                obs.observe(document.documentElement, { childList: true, subtree: true });
-            }),
+            waitForElement: element_waiter_1.waitForElement,
         },
         ipc: {
             on: (c, h) => {
@@ -193,6 +194,7 @@ function rendererCodexApi(tweakId) {
             },
             getCapabilities: () => electron_1.ipcRenderer.invoke("codexpp:codex-runtime-capabilities"),
         },
+        sidebar: (0, main_sidebar_actions_1.rendererSidebarApi)(tweakId),
         windows: {
             create: (options) => electron_1.ipcRenderer.invoke("codexpp:codex-window-create", options),
             getPrimary: () => electron_1.ipcRenderer.invoke("codexpp:codex-window-primary"),

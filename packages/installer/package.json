@@ -1,6 +1,6 @@
 {
   "name": "codex-plusplus",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Installer CLI for codex-plusplus tweak system",
   "type": "module",
   "repository": {
