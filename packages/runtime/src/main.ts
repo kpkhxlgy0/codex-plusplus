@@ -35,6 +35,11 @@ import type { TweakManifest } from "@codex-plusplus/sdk";
 import type {
   CodexRuntimeCapabilities,
   CodexRuntimeInfo,
+  CodexModelGenerateObjectOptions,
+  CodexModelGenerateTextOptions,
+  CodexModelObjectResult,
+  CodexModelReasoningEffort,
+  CodexModelTextResult,
   CodexViewCreateOptions,
   CodexViewRef,
   CodexWindowRef,
@@ -848,6 +853,20 @@ ipcMain.handle("codexpp:codex-runtime-info", () => currentRuntimeInfo());
 ipcMain.handle("codexpp:codex-runtime-capabilities", () => currentRuntimeCapabilities());
 ipcMain.handle("codexpp:codex-cdp-status", () => getCdpStatus());
 ipcMain.handle("codexpp:codex-cdp-targets", () => listCdpTargets());
+ipcMain.handle(
+  "codexpp:model-generate-text",
+  (_e, tweakId: string, options: CodexModelGenerateTextOptions) => {
+    assertTweakPermissionForId(tweakId, "model");
+    return generateModelText(tweakId, options);
+  },
+);
+ipcMain.handle(
+  "codexpp:model-generate-object",
+  (_e, tweakId: string, options: CodexModelGenerateObjectOptions) => {
+    assertTweakPermissionForId(tweakId, "model");
+    return generateModelObject(tweakId, options);
+  },
+);
 ipcMain.handle("codexpp:codex-window-create", (_e, opts: CodexCreateWindowOptions) => {
   return createCodexWindow(opts);
 });
@@ -1026,6 +1045,7 @@ function loadAllMainTweaks(): void {
           storage,
           ipc: makeMainIpc(t.manifest.id),
           fs: makeMainFs(t.manifest.id),
+          model: makeModelApi(t.manifest.id),
           codex: makeCodexApi(t),
         });
         tweakState.loadedMain.set(t.manifest.id, {
@@ -1677,6 +1697,201 @@ function makeMainFs(id: string) {
       }
     },
   };
+}
+
+function makeModelApi(tweakId: string) {
+  return {
+    generateText: (options: CodexModelGenerateTextOptions) => {
+      assertTweakPermissionForId(tweakId, "model");
+      return generateModelText(tweakId, options);
+    },
+    generateObject: <T = unknown>(options: CodexModelGenerateObjectOptions) => {
+      assertTweakPermissionForId(tweakId, "model");
+      return generateModelObject<T>(tweakId, options);
+    },
+  };
+}
+
+function cleanModelReasoningEffort(value: unknown): CodexModelReasoningEffort | null {
+  return value === "minimal" ||
+    value === "low" ||
+    value === "medium" ||
+    value === "high" ||
+    value === "xhigh"
+    ? value
+    : null;
+}
+
+function cleanModelString(value: unknown, maxLength: number): string {
+  return typeof value === "string" ? value.slice(0, maxLength) : "";
+}
+
+function modelPrompt(options: CodexModelGenerateTextOptions): string {
+  const system = cleanModelString(options.system, 8000).trim();
+  const prompt = cleanModelString(options.prompt, 120000).trim();
+  if (!prompt) throw new Error("model prompt is required");
+  return system ? `${system}\n\n${prompt}` : prompt;
+}
+
+function modelWorkingDirectory(tweakId: string, cwd: unknown): string {
+  if (typeof cwd === "string" && cwd && isAbsolute(cwd) && existsSync(cwd)) return cwd;
+  return join(userRoot!, "tweak-data", tweakId);
+}
+
+function codexCliEnv(): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    HOME: process.env.HOME || homedir(),
+    CODEX_INTERNAL_ORIGINATOR_OVERRIDE: process.env.CODEX_INTERNAL_ORIGINATOR_OVERRIDE || "Codex++",
+    PATH: [
+      process.env.PATH || "",
+      "/opt/homebrew/bin",
+      "/usr/local/bin",
+      "/usr/bin",
+      "/bin",
+    ].filter(Boolean).join(":"),
+  };
+}
+
+function codexCliCommand(): string {
+  return process.env.CODEX_PLUSPLUS_CODEX_CLI || process.env.CODEX_CLI || "codex";
+}
+
+function modelTimeoutMs(value: unknown): number {
+  const timeoutMs = typeof value === "number" && Number.isFinite(value) ? value : 45_000;
+  return Math.max(5_000, Math.min(180_000, Math.floor(timeoutMs)));
+}
+
+async function runCodexModel(
+  tweakId: string,
+  options: CodexModelGenerateTextOptions,
+  schema?: Record<string, unknown>,
+): Promise<CodexModelTextResult> {
+  const prompt = modelPrompt(options);
+  const model = cleanModelString(options.model, 120).trim();
+  const reasoningEffort = cleanModelReasoningEffort(options.reasoningEffort);
+  const cwd = modelWorkingDirectory(tweakId, options.cwd);
+  const tempDir = mkdtempSync(join(tmpdir(), "codexpp-model-"));
+  const promptPath = join(tempDir, "prompt.txt");
+  const outputPath = join(tempDir, "output.txt");
+  const schemaPath = join(tempDir, "schema.json");
+
+  try {
+    writeFileSync(promptPath, prompt, "utf8");
+    const args = [
+      "exec",
+      "--ephemeral",
+      "--skip-git-repo-check",
+      "--ignore-rules",
+      "--ask-for-approval",
+      "never",
+      "--sandbox",
+      "read-only",
+      "--output-last-message",
+      outputPath,
+      "-C",
+      cwd,
+    ];
+
+    if (model) args.push("--model", model);
+    if (reasoningEffort) args.push("-c", `model_reasoning_effort="${reasoningEffort}"`);
+    if (schema) {
+      writeFileSync(schemaPath, JSON.stringify(schema, null, 2), "utf8");
+      args.push("--output-schema", schemaPath);
+    }
+    args.push("-");
+
+    const result = await spawnWithInput(codexCliCommand(), args, prompt, {
+      cwd,
+      env: codexCliEnv(),
+      timeoutMs: modelTimeoutMs(options.timeoutMs),
+    });
+    if (result.status !== 0) {
+      throw new Error(`codex exec failed (${result.status ?? "signal"}): ${result.stderr.slice(-2000)}`);
+    }
+
+    const text = readFileSync(outputPath, "utf8").trim();
+    if (!text) throw new Error("codex exec returned an empty final message");
+    return {
+      text,
+      model: model || null,
+      reasoningEffort,
+    };
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+function spawnWithInput(
+  command: string,
+  args: string[],
+  input: string,
+  options: { cwd: string; env: NodeJS.ProcessEnv; timeoutMs: number },
+): Promise<{ status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }> {
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(command, args, {
+      cwd: options.cwd,
+      env: options.env,
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGTERM");
+      reject(new Error(`codex model generation timed out after ${options.timeoutMs}ms`));
+    }, options.timeoutMs);
+
+    child.stdout?.setEncoding("utf8");
+    child.stderr?.setEncoding("utf8");
+    child.stdout?.on("data", (chunk) => {
+      stdout += String(chunk);
+      if (stdout.length > 128_000) stdout = stdout.slice(-128_000);
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr += String(chunk);
+      if (stderr.length > 128_000) stderr = stderr.slice(-128_000);
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("close", (status, signal) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolvePromise({ status, signal, stdout, stderr });
+    });
+    child.stdin?.end(input);
+  });
+}
+
+async function generateModelText(
+  tweakId: string,
+  options: CodexModelGenerateTextOptions,
+): Promise<CodexModelTextResult> {
+  return runCodexModel(tweakId, options);
+}
+
+async function generateModelObject<T = unknown>(
+  tweakId: string,
+  options: CodexModelGenerateObjectOptions,
+): Promise<CodexModelObjectResult<T>> {
+  if (!options || typeof options !== "object" || !options.schema || typeof options.schema !== "object") {
+    throw new Error("model object generation requires a JSON schema");
+  }
+  const result = await runCodexModel(tweakId, options, options.schema);
+  let object: T;
+  try {
+    object = JSON.parse(result.text) as T;
+  } catch (error) {
+    throw new Error(`model object generation returned invalid JSON: ${(error as Error).message}`);
+  }
+  return { ...result, object };
 }
 
 function currentRuntimeInfo(): CodexRuntimeInfo {

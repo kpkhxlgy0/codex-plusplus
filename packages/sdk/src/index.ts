@@ -65,6 +65,7 @@ export type TweakPermission =
   | "ipc"
   | "filesystem"
   | "network"
+  | "model"
   | "settings"
   | "codex-runtime"
   | "codex-windows"
@@ -82,6 +83,7 @@ export const VALID_TWEAK_PERMISSIONS = [
   "ipc",
   "filesystem",
   "network",
+  "model",
   "settings",
   "codex-runtime",
   "codex-windows",
@@ -289,6 +291,8 @@ export interface TweakApi {
   ipc: TweakIpc;
   /** Filesystem helpers, sandboxed to the tweak's data dir. */
   fs: TweakFs;
+  /** Cross-process access to Codex's authenticated model runtime. */
+  model?: CodexModelApi;
   /** Main-only: native Codex integration points exposed by Codex++. */
   codex?: CodexApi;
 }
@@ -392,6 +396,45 @@ export interface TweakFs {
   read(relPath: string): Promise<string>;
   write(relPath: string, contents: string): Promise<void>;
   exists(relPath: string): Promise<boolean>;
+}
+
+export type CodexModelReasoningEffort = "minimal" | "low" | "medium" | "high" | "xhigh";
+
+export interface CodexModelBaseOptions {
+  /** User-facing instruction. Keep prompts scoped; this runs through Codex auth. */
+  prompt: string;
+  /** Optional system/developer-style preface prepended before the prompt. */
+  system?: string;
+  /** Defaults to the user's Codex config when omitted. */
+  model?: string;
+  /** Defaults to the user's Codex config when omitted. */
+  reasoningEffort?: CodexModelReasoningEffort;
+  /** Working directory for project-aware generation. Defaults to the tweak data dir. */
+  cwd?: string;
+  /** Kill the model subprocess after this many milliseconds. Defaults to 45s. */
+  timeoutMs?: number;
+}
+
+export interface CodexModelGenerateTextOptions extends CodexModelBaseOptions {}
+
+export interface CodexModelGenerateObjectOptions extends CodexModelBaseOptions {
+  /** JSON Schema object passed to Codex's structured output mode. */
+  schema: Record<string, unknown>;
+}
+
+export interface CodexModelTextResult {
+  text: string;
+  model: string | null;
+  reasoningEffort: CodexModelReasoningEffort | null;
+}
+
+export interface CodexModelObjectResult<T = unknown> extends CodexModelTextResult {
+  object: T;
+}
+
+export interface CodexModelApi {
+  generateText(options: CodexModelGenerateTextOptions): Promise<CodexModelTextResult>;
+  generateObject<T = unknown>(options: CodexModelGenerateObjectOptions): Promise<CodexModelObjectResult<T>>;
 }
 
 export interface CodexApi {

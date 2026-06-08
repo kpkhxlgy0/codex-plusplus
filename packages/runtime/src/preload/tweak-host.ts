@@ -21,6 +21,10 @@ import { disposeSidebarActionsForTweak, rendererSidebarApi } from "./main-sideba
 import type {
   CodexCdpStatus,
   CodexCdpTarget,
+  CodexModelGenerateObjectOptions,
+  CodexModelGenerateTextOptions,
+  CodexModelObjectResult,
+  CodexModelTextResult,
   CodexRuntimeCapabilities,
   CodexRuntimeInfo,
   CodexViewRef,
@@ -239,6 +243,7 @@ function makeRendererApi(manifest: TweakManifest, paths: UserPaths): TweakApi {
         ipcRenderer.invoke(`codexpp:${id}:${c}`, ...args) as Promise<T>,
     },
     fs: rendererFs(id, paths),
+    model: rendererModelApi(id),
     codex: rendererCodexApi(id),
   };
 }
@@ -324,6 +329,23 @@ function rendererCodexApi(tweakId: string): NonNullable<TweakApi["codex"]> {
     },
     createWindow: (options) =>
       ipcRenderer.invoke("codexpp:codex-window-create", options) as Promise<CodexWindowRef>,
+  };
+}
+
+function rendererModelApi(tweakId: string): NonNullable<TweakApi["model"]> {
+  return {
+    generateText: (options: CodexModelGenerateTextOptions) =>
+      ipcRenderer.invoke(
+        "codexpp:model-generate-text",
+        tweakId,
+        options,
+      ) as Promise<CodexModelTextResult>,
+    generateObject: <T = unknown>(options: CodexModelGenerateObjectOptions) =>
+      ipcRenderer.invoke(
+        "codexpp:model-generate-object",
+        tweakId,
+        options,
+      ) as Promise<CodexModelObjectResult<T>>,
   };
 }
 
