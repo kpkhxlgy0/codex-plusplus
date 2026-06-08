@@ -287,6 +287,8 @@ export interface TweakApi {
   settings?: SettingsApi;
   /** Renderer-only: React fiber utilities for advanced injection. */
   react?: ReactApi;
+  /** Renderer-only: low-level bridge hooks for advanced Codex UI integrations. */
+  bridge?: RendererBridgeApi;
   /** Cross-process IPC scoped to this tweak's id. */
   ipc: TweakIpc;
   /** Filesystem helpers, sandboxed to the tweak's data dir. */
@@ -368,6 +370,34 @@ export interface ReactApi {
   findOwnerByName(node: Element, name: string): ReactFiberNode | null;
   /** Wait for an element matching `selector` to exist in the DOM. */
   waitForElement(selector: string, timeoutMs?: number): Promise<Element>;
+}
+
+export interface RendererBridgeApi {
+  /**
+   * Transform outbound Codex UI messages before they cross the Electron
+   * bridge. Return a replacement message, or undefined to leave it unchanged.
+   * Keep transformers synchronous and cheap.
+   */
+  addMessageFromViewTransformer(
+    transformer: (message: unknown, context?: MessageFromViewContext) => unknown | undefined,
+  ): SettingsHandle;
+  /**
+   * Observe successful responses to outbound Codex UI messages. This is useful
+   * for tweaks that need to persist native identifiers returned by Codex
+   * without scraping the DOM or URL bar.
+   */
+  addMessageFromViewResponseListener?(
+    listener: (
+      message: unknown,
+      response: unknown,
+      context?: MessageFromViewContext,
+    ) => void,
+  ): SettingsHandle;
+}
+
+export interface MessageFromViewContext {
+  senderId?: number;
+  senderUrl?: string;
 }
 
 /** Minimal subset of React's internal fiber shape we expose. */
@@ -478,6 +508,11 @@ export interface CodexSidebarActionOptions {
   tooltip?: string;
   /** Optional currentColor SVG markup. Defaults to a generic app icon. */
   iconSvg?: string;
+  /**
+   * Where to place the action relative to Codex's native top sidebar actions.
+   * Defaults to `end`.
+   */
+  placement?: "start" | "end";
   /** Lower numbers appear earlier in the top action group. Defaults to 50. */
   order?: number;
   /** Initial active state. */
@@ -490,6 +525,7 @@ export interface CodexSidebarActionUpdate {
   label?: string;
   tooltip?: string;
   iconSvg?: string;
+  placement?: "start" | "end";
   order?: number;
   active?: boolean;
   onClick?: (event: MouseEvent) => void | Promise<void>;

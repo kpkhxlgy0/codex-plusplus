@@ -28,6 +28,7 @@ interface Opts {
   app?: string;
   quiet?: boolean;
   force?: boolean;
+  runtime?: boolean;
   localSigning?: boolean;
   watcher?: boolean;
 }
@@ -94,6 +95,23 @@ export async function repair(opts: Opts = {}): Promise<void> {
     const { headerHash } = readHeaderHash(codex.asarPath);
     if (headerHash === state.patchedAsarHash) {
       const watcher = refreshWatcher(state.watcher, codex.appRoot, opts.quiet);
+      if (opts.runtime) {
+        stageAssets(paths.runtime);
+        writeState(paths.stateFile, {
+          ...state,
+          watcher,
+          version: CODEX_PLUSPLUS_VERSION,
+          sourceRoot,
+          runtimeUpdatedAt: new Date().toISOString(),
+        });
+        if (!opts.quiet) {
+          console.log(kleur.green("Codex++ runtime assets refreshed."));
+        }
+        if (isCodexRunning(codex.appRoot)) {
+          promptRestartCodexAfterRuntimeUpdate(codex.appRoot, CODEX_PLUSPLUS_VERSION);
+        }
+        return;
+      }
       if (compareSemver(CODEX_PLUSPLUS_VERSION, state.version) > 0) {
         if (!isAutoUpdateEnabled(paths.configFile)) {
           if (!opts.quiet) console.log(kleur.yellow("Codex++ auto-update is disabled."));

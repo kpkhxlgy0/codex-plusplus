@@ -9,7 +9,7 @@ interface SidebarActionRecord {
   tweakId: string;
   id: string;
   key: string;
-  options: Required<Pick<CodexSidebarActionOptions, "id" | "label" | "tooltip" | "order" | "active">> &
+  options: Required<Pick<CodexSidebarActionOptions, "id" | "label" | "tooltip" | "placement" | "order" | "active">> &
     Pick<CodexSidebarActionOptions, "iconSvg" | "onClick">;
   node: HTMLElement | null;
   listener: ((event: MouseEvent) => void) | null;
@@ -18,7 +18,17 @@ interface SidebarActionRecord {
 interface SidebarSlot {
   container: HTMLElement;
   template: HTMLElement;
+  insertBefore: HTMLElement | null;
   insertAfter: HTMLElement | null;
+}
+
+interface MutedNativeActiveElement {
+  className: string;
+  ariaCurrent: string | null;
+  ariaSelected: string | null;
+  dataState: string | null;
+  dataActive: string | null;
+  dataSelected: string | null;
 }
 
 const MAIN_SIDEBAR_ACTION_LABELS = [
@@ -31,7 +41,9 @@ const MAIN_SIDEBAR_ACTION_LABELS = [
 ].map(normalizeLabel);
 
 const records = new Map<string, SidebarActionRecord>();
+const mutedNativeActiveElements = new Map<HTMLElement, MutedNativeActiveElement>();
 let observer: MutationObserver | null = null;
+let delegatedEventsInstalled = false;
 let refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
 export function rendererSidebarApi(tweakId: string): CodexSidebarApi {
@@ -59,6 +71,7 @@ export function registerSidebarAction(
   if (existing) {
     existing.options = normalized;
     renderRecord(existing);
+    syncNativeSidebarActiveState();
     return actionRef(existing);
   }
 
@@ -83,11 +96,13 @@ function actionRef(record: SidebarActionRecord): CodexSidebarActionRef {
       const merged = normalizeOptions({ ...record.options, ...update, id: record.id });
       record.options = merged;
       renderRecord(record);
+      syncNativeSidebarActiveState();
       scheduleSidebarRefresh();
     },
     setActive(active) {
       record.options = { ...record.options, active };
       renderRecord(record);
+      syncNativeSidebarActiveState();
     },
     dispose() {
       disposeRecord(record);
@@ -105,6 +120,7 @@ function normalizeOptions(options: CodexSidebarActionOptions): SidebarActionReco
     id,
     label,
     tooltip: cleanString(options.tooltip) || label,
+    placement: options.placement === "start" ? "start" : "end",
     order: Number.isFinite(options.order) ? Number(options.order) : 50,
     active: options.active === true,
     iconSvg: cleanString(options.iconSvg) || undefined,
@@ -117,6 +133,7 @@ function ensureObserver(): void {
   observer = new MutationObserver(() => scheduleSidebarRefresh());
   observer.observe(document.documentElement, { childList: true, subtree: true });
   window.addEventListener("resize", scheduleSidebarRefresh, { passive: true });
+  ensureDelegatedSidebarEvents();
 }
 
 function stopObserverIfIdle(): void {
@@ -124,10 +141,62 @@ function stopObserverIfIdle(): void {
   observer?.disconnect();
   observer = null;
   window.removeEventListener("resize", scheduleSidebarRefresh);
+  removeDelegatedSidebarEvents();
   if (refreshTimer) {
     clearTimeout(refreshTimer);
     refreshTimer = null;
   }
+}
+
+function ensureDelegatedSidebarEvents(): void {
+  if (delegatedEventsInstalled || typeof document === "undefined") return;
+  delegatedEventsInstalled = true;
+  document.addEventListener("click", onDelegatedSidebarActionClick, true);
+  document.addEventListener("keydown", onDelegatedSidebarActionKeydown, true);
+}
+
+function removeDelegatedSidebarEvents(): void {
+  if (!delegatedEventsInstalled || typeof document === "undefined") return;
+  delegatedEventsInstalled = false;
+  document.removeEventListener("click", onDelegatedSidebarActionClick, true);
+  document.removeEventListener("keydown", onDelegatedSidebarActionKeydown, true);
+}
+
+function onDelegatedSidebarActionClick(event: MouseEvent): void {
+  const action = sidebarActionNodeForEvent(event);
+  if (!action) return;
+  const record = records.get(action.dataset.codexppSidebarAction || "");
+  if (!record) return;
+  event.preventDefault();
+  event.stopPropagation();
+  void record.options.onClick?.(event);
+}
+
+function onDelegatedSidebarActionKeydown(event: KeyboardEvent): void {
+  if (event.key !== "Enter" && event.key !== " ") return;
+  const action = sidebarActionNodeForEvent(event);
+  if (!action) return;
+  event.preventDefault();
+  event.stopPropagation();
+  interactiveTarget(action).click();
+}
+
+function sidebarActionNodeForEvent(event: Event): HTMLElement | null {
+  const target = eventTargetElement(event);
+  const action = target?.closest("[data-codexpp-sidebar-action]");
+  return domElement(action);
+}
+
+function eventTargetElement(event: Event): HTMLElement | null {
+  return domElement(event.target);
+}
+
+function domElement(value: unknown): HTMLElement | null {
+  if (!value || typeof value !== "object") return null;
+  const element = value as HTMLElement;
+  if (typeof element.closest !== "function") return null;
+  if (typeof element.getAttribute !== "function") return null;
+  return element;
 }
 
 function scheduleSidebarRefresh(): void {
@@ -143,7 +212,8 @@ function refreshSidebarActions(): void {
   const slot = findMainSidebarActionSlot();
   if (!slot) return;
 
-  for (const record of sortedRecords()) {
+  const sorted = sortedRecords();
+  for (const record of sorted) {
     if (!record.node || !record.node.isConnected || record.node.parentElement !== slot.container) {
       record.node?.remove();
       record.node = createActionNode(slot.template, record);
@@ -151,14 +221,24 @@ function refreshSidebarActions(): void {
     renderRecord(record);
   }
 
+  for (const record of sorted) {
+    if (record.node?.parentElement === slot.container) record.node.remove();
+  }
+
   let anchor = slot.insertAfter;
-  for (const record of sortedRecords()) {
+  for (const record of sorted.filter((item) => item.options.placement === "start")) {
     if (!record.node) continue;
-    if (anchor?.nextSibling !== record.node) {
-      slot.container.insertBefore(record.node, anchor ? anchor.nextSibling : slot.container.firstChild);
-    }
+    slot.container.insertBefore(record.node, anchor ? anchor.nextSibling : slot.container.firstChild);
     anchor = record.node;
   }
+
+  for (const record of sorted.filter((item) => item.options.placement === "end")) {
+    if (!record.node) continue;
+    slot.container.insertBefore(record.node, anchor ? anchor.nextSibling : slot.container.firstChild);
+    anchor = record.node;
+  }
+
+  syncNativeSidebarActiveState();
 }
 
 function sortedRecords(): SidebarActionRecord[] {
@@ -171,20 +251,6 @@ function createActionNode(template: HTMLElement, record: SidebarActionRecord): H
   const node = template.cloneNode(true) as HTMLElement;
   sanitizeActionNode(node);
   node.dataset.codexppSidebarAction = record.key;
-  node.addEventListener("click", (event) => {
-    event.preventDefault();
-    event.stopPropagation();
-    void record.options.onClick?.(event);
-  });
-  const target = interactiveTarget(node);
-  if (!hasNativeActivation(target)) {
-    target.addEventListener("keydown", (event) => {
-      if (event.key !== "Enter" && event.key !== " ") return;
-      event.preventDefault();
-      event.stopPropagation();
-      target.click();
-    });
-  }
   return node;
 }
 
@@ -194,24 +260,38 @@ function renderRecord(record: SidebarActionRecord): void {
   const target = interactiveTarget(node);
   node.dataset.codexppSidebarAction = record.key;
   node.dataset.codexppSidebarActionActive = record.options.active ? "true" : "false";
+  if (target !== node) target.dataset.codexppSidebarActionActive = record.options.active ? "true" : "false";
+  applyPlacementStyle(node, record);
   target.setAttribute("aria-label", record.options.label);
   target.setAttribute("title", record.options.tooltip);
   target.setAttribute("role", "button");
   target.setAttribute("tabindex", "0");
   setActiveAttributes(node, record.options.active);
   if (target !== node) setActiveAttributes(target, record.options.active);
+  applyNativeLikeActiveStyle(target, record.options.active);
   replaceActionIcon(node, record.options.iconSvg);
   replaceActionLabel(node, record.options.label);
+  applyNativeLikeActiveStyle(target, record.options.active);
 }
 
 function disposeRecord(record: SidebarActionRecord): void {
   record.node?.remove();
   record.node = null;
   records.delete(record.key);
+  syncNativeSidebarActiveState();
+}
+
+function applyPlacementStyle(node: HTMLElement, record: SidebarActionRecord): void {
+  if (record.options.placement === "start") {
+    node.style.order = String(-10000 + record.options.order);
+  } else {
+    node.style.removeProperty("order");
+  }
 }
 
 export function findMainSidebarActionSlot(root: ParentNode = document): SidebarSlot | null {
-  const aside = root.querySelector?.("aside") as HTMLElement | null;
+  const aside = Array.from(root.querySelectorAll?.("aside") ?? [])
+    .find((candidate): candidate is HTMLElement => candidate instanceof HTMLElement && !!visibleBox(candidate));
   if (!aside) return null;
 
   const controls = visibleControls(aside)
@@ -219,13 +299,18 @@ export function findMainSidebarActionSlot(root: ParentNode = document): SidebarS
     .filter((item) => MAIN_SIDEBAR_ACTION_LABELS.some((marker) => labelMatches(item.label, marker)));
   if (!controls.length) return null;
 
-  const templateControl = controls[0]?.control;
+  const sortedControls = controls
+    .map((item) => item.control)
+    .sort(compareDocumentPosition);
+  const templateControl = sortedControls[0];
   if (!templateControl) return null;
-  const group = actionGroupFor(aside, controls.map((item) => item.control));
+  const group = actionGroupFor(aside, sortedControls);
   const template = rowInGroup(group, templateControl);
-  const rows = controls.map((item) => rowInGroup(group, item.control)).filter(Boolean);
-  const insertAfter = rows.sort(compareDocumentPosition).at(-1) ?? template;
-  return { container: group, template, insertAfter };
+  const rows = sortedControls.map((control) => rowInGroup(group, control)).filter(Boolean);
+  const sortedRows = rows.sort(compareDocumentPosition);
+  const insertBefore = sortedRows[0] ?? template;
+  const insertAfter = sortedRows.at(-1) ?? template;
+  return { container: group, template, insertBefore, insertAfter };
 }
 
 function visibleControls(root: HTMLElement): HTMLElement[] {
@@ -244,8 +329,10 @@ function actionGroupFor(aside: HTMLElement, controls: HTMLElement[]): HTMLElemen
   if (!first) return aside;
   let node: HTMLElement | null = first.parentElement;
   while (node && node !== aside) {
-    const count = controls.filter((control) => node?.contains(control)).length;
-    if (count >= Math.min(2, controls.length)) return node;
+    const childRows = controls
+      .map((control) => childInContainer(node as HTMLElement, control))
+      .filter(Boolean);
+    if (new Set(childRows).size >= Math.min(2, controls.length)) return node;
     node = node.parentElement;
   }
   return first.parentElement || aside;
@@ -255,6 +342,12 @@ function rowInGroup(group: HTMLElement, control: HTMLElement): HTMLElement {
   let node: HTMLElement = control;
   while (node.parentElement && node.parentElement !== group) node = node.parentElement;
   return node;
+}
+
+function childInContainer(container: HTMLElement, control: HTMLElement): HTMLElement | null {
+  let node: HTMLElement = control;
+  while (node.parentElement && node.parentElement !== container) node = node.parentElement;
+  return node.parentElement === container ? node : null;
 }
 
 function sanitizeActionNode(node: HTMLElement): void {
@@ -277,24 +370,155 @@ function matchesControl(node: HTMLElement): boolean {
   return node.matches("button,a,[role='button'],[role='link']");
 }
 
-function hasNativeActivation(node: HTMLElement): boolean {
-  return node instanceof HTMLButtonElement || (node instanceof HTMLAnchorElement && !!node.href);
+function setActiveAttributes(node: HTMLElement, active: boolean): void {
+  if (active) {
+    node.setAttribute("aria-current", "page");
+    node.setAttribute("aria-selected", "true");
+    node.setAttribute("data-state", "active");
+    node.setAttribute("data-active", "true");
+    node.setAttribute("data-selected", "true");
+  } else {
+    node.removeAttribute("aria-current");
+    node.removeAttribute("aria-selected");
+    node.removeAttribute("data-state");
+    node.removeAttribute("data-active");
+    node.removeAttribute("data-selected");
+  }
 }
 
-function setActiveAttributes(node: HTMLElement, active: boolean): void {
-  node.toggleAttribute("aria-current", active);
-  if (active) node.setAttribute("data-state", "active");
-  else node.removeAttribute("data-state");
+function applyNativeLikeActiveStyle(target: HTMLElement, active: boolean): void {
+  const content = activeContentElement(target);
+  const icon = target.querySelector<SVGElement>("svg");
+  if (active) {
+    target.classList.remove("hover:bg-token-list-hover-background", "font-normal");
+    target.classList.add("bg-token-list-hover-background");
+    content?.classList.remove("text-token-foreground");
+    content?.classList.add("text-token-list-active-selection-foreground");
+    icon?.classList.add("text-token-list-active-selection-icon-foreground");
+  } else {
+    target.classList.add("hover:bg-token-list-hover-background", "font-normal");
+    target.classList.remove("bg-token-list-hover-background");
+    content?.classList.add("text-token-foreground");
+    content?.classList.remove("text-token-list-active-selection-foreground");
+    icon?.classList.remove("text-token-list-active-selection-icon-foreground");
+  }
+}
+
+function activeContentElement(target: HTMLElement): HTMLElement | null {
+  const tokenElement = target.querySelector<HTMLElement>(
+    ".text-token-foreground,.text-token-list-active-selection-foreground",
+  );
+  if (tokenElement) return tokenElement;
+  return target.firstElementChild instanceof HTMLElement ? target.firstElementChild : target;
+}
+
+function syncNativeSidebarActiveState(): void {
+  if (hasActiveRecord()) muteNativeSidebarActiveState();
+  else restoreNativeSidebarActiveState();
+}
+
+function hasActiveRecord(): boolean {
+  return Array.from(records.values()).some((record) => record.options.active && record.node?.isConnected);
+}
+
+function muteNativeSidebarActiveState(root: ParentNode = document): void {
+  const aside = Array.from(root.querySelectorAll?.("aside") ?? [])
+    .find((candidate): candidate is HTMLElement => candidate instanceof HTMLElement && !!visibleBox(candidate));
+  if (!aside) return;
+
+  const controls = Array.from(
+    aside.querySelectorAll<HTMLElement>("button,a,[role='button'],[role='link']"),
+  );
+  for (const control of controls) {
+    if (control.closest("[data-codexpp-sidebar-action]")) continue;
+    if (!isNativeActiveControl(control)) continue;
+    muteNativeActiveElement(control);
+    for (const child of activeSelectionDescendants(control)) muteNativeActiveElement(child);
+  }
+}
+
+function restoreNativeSidebarActiveState(): void {
+  for (const [element, state] of Array.from(mutedNativeActiveElements.entries())) {
+    if (element.isConnected) {
+      element.className = state.className;
+      restoreNullableAttribute(element, "aria-current", state.ariaCurrent);
+      restoreNullableAttribute(element, "aria-selected", state.ariaSelected);
+      restoreNullableAttribute(element, "data-state", state.dataState);
+      restoreNullableAttribute(element, "data-active", state.dataActive);
+      restoreNullableAttribute(element, "data-selected", state.dataSelected);
+    }
+    mutedNativeActiveElements.delete(element);
+  }
+}
+
+function muteNativeActiveElement(element: HTMLElement): void {
+  if (!mutedNativeActiveElements.has(element)) {
+    mutedNativeActiveElements.set(element, {
+      className: element.className,
+      ariaCurrent: element.getAttribute("aria-current"),
+      ariaSelected: element.getAttribute("aria-selected"),
+      dataState: element.getAttribute("data-state"),
+      dataActive: element.getAttribute("data-active"),
+      dataSelected: element.getAttribute("data-selected"),
+    });
+  }
+
+  element.removeAttribute("aria-current");
+  element.removeAttribute("aria-selected");
+  element.removeAttribute("data-state");
+  element.removeAttribute("data-active");
+  element.removeAttribute("data-selected");
+  element.classList.remove(
+    "active",
+    "bg-token-list-hover-background",
+    "text-token-list-active-selection-foreground",
+    "text-token-list-active-selection-icon-foreground",
+  );
+  if (matchesControl(element)) element.classList.add("hover:bg-token-list-hover-background", "font-normal");
+}
+
+function activeSelectionDescendants(control: HTMLElement): HTMLElement[] {
+  return Array.from(
+    control.querySelectorAll<HTMLElement>(
+      ".bg-token-list-hover-background,.text-token-list-active-selection-foreground,.text-token-list-active-selection-icon-foreground",
+    ),
+  );
+}
+
+function isNativeActiveControl(control: HTMLElement): boolean {
+  return control.getAttribute("aria-current") === "page" ||
+    control.getAttribute("aria-selected") === "true" ||
+    control.getAttribute("data-state") === "active" ||
+    control.getAttribute("data-active") === "true" ||
+    control.getAttribute("data-selected") === "true" ||
+    control.classList.contains("active") ||
+    control.classList.contains("bg-token-list-hover-background") ||
+    activeSelectionDescendants(control).length > 0;
+}
+
+function restoreNullableAttribute(element: HTMLElement, name: string, value: string | null): void {
+  if (value === null) element.removeAttribute(name);
+  else element.setAttribute(name, value);
 }
 
 function replaceActionIcon(node: HTMLElement, iconSvg?: string): void {
   const svg = parseSvg(iconSvg || defaultSidebarIconSvg());
   const current = node.querySelector("svg");
   if (current && svg) {
+    copyIconPresentation(current, svg);
     current.replaceWith(svg);
     return;
   }
   if (svg) node.prepend(svg);
+}
+
+function copyIconPresentation(from: SVGElement, to: SVGElement): void {
+  for (const attr of ["class", "style", "width", "height"]) {
+    const value = from.getAttribute(attr);
+    if (value) to.setAttribute(attr, value);
+  }
+  if (!to.getAttribute("width") && !to.getAttribute("class")) to.setAttribute("width", "16");
+  if (!to.getAttribute("height") && !to.getAttribute("class")) to.setAttribute("height", "16");
 }
 
 function replaceActionLabel(node: HTMLElement, label: string): void {
@@ -306,12 +530,27 @@ function replaceActionLabel(node: HTMLElement, label: string): void {
   }
   if (textNodes.length) {
     textNodes[0].textContent = label;
-    for (const extra of textNodes.slice(1)) extra.textContent = "";
+    for (const extra of textNodes.slice(1)) removeAccessoryTextNode(extra, node);
     return;
   }
   const span = document.createElement("span");
   span.textContent = label;
   node.appendChild(span);
+}
+
+function removeAccessoryTextNode(text: Text, root: HTMLElement): void {
+  const original = cleanString(text.textContent);
+  let node: HTMLElement | null = text.parentElement;
+  while (node && node !== root) {
+    const content = cleanString(node.textContent);
+    const hasGraphic = !!node.querySelector("svg,img");
+    if (content === original && !hasGraphic) {
+      node.remove();
+      return;
+    }
+    node = node.parentElement;
+  }
+  text.textContent = "";
 }
 
 function parseSvg(svgText: string): SVGElement | null {

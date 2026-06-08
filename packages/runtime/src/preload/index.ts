@@ -35,6 +35,13 @@ const DESKTOP_GET_FAST_MODE_ROLLOUT_METRICS = "codex_desktop:get-fast-mode-rollo
 const DESKTOP_SYSTEM_THEME_UPDATED = "codex_desktop:system-theme-variant-updated";
 const DESKTOP_TRIGGER_SENTRY_TEST = "codex_desktop:trigger-sentry-test";
 
+type MessageFromViewTransformer = (message: unknown) => unknown;
+
+type CodexPlusPlusBridgeHooks = {
+  addMessageFromViewTransformer?: (transformer: MessageFromViewTransformer) => () => void;
+  transformMessageFromView?: (message: unknown) => unknown;
+};
+
 function desktopWorkerFromViewChannel(workerId: string): string {
   return `codex_desktop:worker:${workerId}:from-view`;
 }
@@ -185,7 +192,7 @@ async function runBrowserUiBridgeMethod(
     case "usesOwlAppShell":
       return ipcRenderer.sendSync(DESKTOP_GET_USES_OWL_APP_SHELL) === true;
     case "sendMessageFromView":
-      return ipcRenderer.invoke(DESKTOP_MESSAGE_FROM_VIEW, args[0]);
+      return ipcRenderer.invoke(DESKTOP_MESSAGE_FROM_VIEW, transformMessageFromView(args[0]));
     case "sendWorkerMessageFromView":
       return ipcRenderer.invoke(desktopWorkerFromViewChannel(String(args[0])), args[1]);
     case "subscribeWorkerMessages":
@@ -206,6 +213,24 @@ async function runBrowserUiBridgeMethod(
       return ipcRenderer.invoke(DESKTOP_TRIGGER_SENTRY_TEST);
     default:
       throw new Error(`Unknown Codex++ browser UI bridge method: ${method}`);
+  }
+}
+
+function transformMessageFromView(message: unknown): unknown {
+  try {
+    const hooks = (globalThis as typeof globalThis & {
+      __codexPlusPlusBridgeHooks?: CodexPlusPlusBridgeHooks;
+      __codexppBridgeHooks?: CodexPlusPlusBridgeHooks;
+    }).__codexPlusPlusBridgeHooks
+      ?? (globalThis as typeof globalThis & {
+        __codexppBridgeHooks?: CodexPlusPlusBridgeHooks;
+      }).__codexppBridgeHooks;
+    if (typeof hooks?.transformMessageFromView !== "function") return message;
+    const transformed = hooks.transformMessageFromView(message);
+    return transformed === undefined ? message : transformed;
+  } catch (error) {
+    fileLog("message-from-view transform FAILED", String((error as Error)?.stack ?? error));
+    return message;
   }
 }
 

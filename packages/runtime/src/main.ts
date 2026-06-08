@@ -94,9 +94,25 @@ const CODEX_PLUSPLUS_REPO = "b-nnett/codex-plusplus";
 const TWEAK_STORE_INDEX_URL = process.env.CODEX_PLUSPLUS_STORE_INDEX_URL ?? DEFAULT_TWEAK_STORE_INDEX_URL;
 const CODEX_WINDOW_SERVICES_KEY = "__codexpp_window_services__";
 const DEBUG_WEB_CONTENTS_LOG = process.env.CODEXPP_DEBUG_WEB_CONTENTS === "1";
+const DESKTOP_MESSAGE_FROM_VIEW = "codex_desktop:message-from-view";
+
+type MessageFromViewContext = { senderId?: number; senderUrl?: string };
+type MessageFromViewTransformer = (
+  message: unknown,
+  context: MessageFromViewContext,
+) => unknown | undefined;
+type MessageFromViewResponseListener = (
+  message: unknown,
+  response: unknown,
+  context: MessageFromViewContext,
+) => void;
+
+const mainMessageFromViewTransformers = new Set<MessageFromViewTransformer>();
+const mainMessageFromViewResponseListeners = new Set<MessageFromViewResponseListener>();
 
 mkdirSync(LOG_DIR, { recursive: true });
 mkdirSync(TWEAKS_DIR, { recursive: true });
+installMessageFromViewTransformHook();
 
 // Optional: enable Chrome DevTools Protocol on a TCP port so we can drive the
 // running Codex from outside (curl http://localhost:<port>/json, attach via
@@ -1043,6 +1059,7 @@ function loadAllMainTweaks(): void {
           process: "main",
           log: makeLogger(t.manifest.id),
           storage,
+          bridge: makeMainBridge(),
           ipc: makeMainIpc(t.manifest.id),
           fs: makeMainFs(t.manifest.id),
           model: makeModelApi(t.manifest.id),
@@ -1658,6 +1675,75 @@ function makeLogger(scope: string) {
     warn: (...a: unknown[]) => log("warn", `[${scope}]`, ...a),
     error: (...a: unknown[]) => log("error", `[${scope}]`, ...a),
   };
+}
+
+function makeMainBridge() {
+  return {
+    addMessageFromViewTransformer: (transformer: MessageFromViewTransformer) => {
+      mainMessageFromViewTransformers.add(transformer);
+      return {
+        unregister: () => {
+          mainMessageFromViewTransformers.delete(transformer);
+        },
+      };
+    },
+    addMessageFromViewResponseListener: (listener: MessageFromViewResponseListener) => {
+      mainMessageFromViewResponseListeners.add(listener);
+      return {
+        unregister: () => {
+          mainMessageFromViewResponseListeners.delete(listener);
+        },
+      };
+    },
+  };
+}
+
+function installMessageFromViewTransformHook(): void {
+  const current = ipcMain.handle as typeof ipcMain.handle & { __codexppMessageTransformPatched?: boolean };
+  if (current.__codexppMessageTransformPatched) return;
+  const originalHandle = ipcMain.handle.bind(ipcMain);
+  const patchedHandle = ((channel: string, listener: Parameters<typeof ipcMain.handle>[1]) => {
+    if (channel !== DESKTOP_MESSAGE_FROM_VIEW) return originalHandle(channel, listener);
+    return originalHandle(channel, async (event, message) => {
+      const context = {
+        senderId: event.sender?.id,
+        senderUrl: event.senderFrame?.url || event.sender?.getURL?.(),
+      };
+      const transformed = transformMessageFromView(message, context);
+      const response = await listener(event, transformed);
+      notifyMessageFromViewResponse(transformed, response, context);
+      return response;
+    });
+  }) as typeof ipcMain.handle & { __codexppMessageTransformPatched?: boolean };
+  patchedHandle.__codexppMessageTransformPatched = true;
+  ipcMain.handle = patchedHandle;
+}
+
+function transformMessageFromView(message: unknown, context: MessageFromViewContext): unknown {
+  let current = message;
+  for (const transformer of Array.from(mainMessageFromViewTransformers)) {
+    try {
+      const next = transformer(current, context);
+      if (next !== undefined) current = next;
+    } catch (error) {
+      log("warn", "message-from-view transformer failed:", error);
+    }
+  }
+  return current;
+}
+
+function notifyMessageFromViewResponse(
+  message: unknown,
+  response: unknown,
+  context: MessageFromViewContext,
+): void {
+  for (const listener of Array.from(mainMessageFromViewResponseListeners)) {
+    try {
+      listener(message, response, context);
+    } catch (error) {
+      log("warn", "message-from-view response listener failed:", error);
+    }
+  }
 }
 
 function makeMainIpc(id: string) {

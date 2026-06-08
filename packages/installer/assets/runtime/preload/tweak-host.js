@@ -22,6 +22,8 @@ const element_waiter_1 = require("./element-waiter");
 const tweak_module_loader_1 = require("./tweak-module-loader");
 const main_sidebar_actions_1 = require("./main-sidebar-actions");
 const loaded = new Map();
+const messageFromViewTransformers = new Set();
+installBridgeHooks();
 async function startTweakHost() {
     const tweaks = (await electron_1.ipcRenderer.invoke("codexpp:list-tweaks"));
     const paths = (await electron_1.ipcRenderer.invoke("codexpp:user-paths"));
@@ -167,6 +169,16 @@ function makeRendererApi(manifest, paths) {
             },
             waitForElement: element_waiter_1.waitForElement,
         },
+        bridge: {
+            addMessageFromViewTransformer: (transformer) => {
+                messageFromViewTransformers.add(transformer);
+                return {
+                    unregister: () => {
+                        messageFromViewTransformers.delete(transformer);
+                    },
+                };
+            },
+        },
         ipc: {
             on: (c, h) => {
                 const wrapped = (_e, ...args) => h(...args);
@@ -177,8 +189,38 @@ function makeRendererApi(manifest, paths) {
             invoke: (c, ...args) => electron_1.ipcRenderer.invoke(`codexpp:${id}:${c}`, ...args),
         },
         fs: rendererFs(id, paths),
+        model: rendererModelApi(id),
         codex: rendererCodexApi(id),
     };
+}
+function installBridgeHooks() {
+    const hooks = {
+        addMessageFromViewTransformer(transformer) {
+            messageFromViewTransformers.add(transformer);
+            return () => messageFromViewTransformers.delete(transformer);
+        },
+        transformMessageFromView(message) {
+            let current = message;
+            for (const transformer of Array.from(messageFromViewTransformers)) {
+                try {
+                    const next = transformer(current);
+                    if (next !== undefined)
+                        current = next;
+                }
+                catch (error) {
+                    console.warn("[codex-plusplus] message-from-view transformer failed", error);
+                    try {
+                        electron_1.ipcRenderer.send("codexpp:preload-log", "warn", "message-from-view transformer failed: " + String(error?.stack ?? error));
+                    }
+                    catch { }
+                }
+            }
+            return current;
+        },
+    };
+    const target = window;
+    target.__codexPlusPlusBridgeHooks = hooks;
+    target.__codexppBridgeHooks = hooks;
 }
 function rendererCodexApi(tweakId) {
     return {
@@ -233,6 +275,12 @@ function rendererCodexApi(tweakId) {
             throw new Error("api.codex.createBrowserView is main-only; use a main-scoped tweak");
         },
         createWindow: (options) => electron_1.ipcRenderer.invoke("codexpp:codex-window-create", options),
+    };
+}
+function rendererModelApi(tweakId) {
+    return {
+        generateText: (options) => electron_1.ipcRenderer.invoke("codexpp:model-generate-text", tweakId, options),
+        generateObject: (options) => electron_1.ipcRenderer.invoke("codexpp:model-generate-object", tweakId, options),
     };
 }
 function rendererCodexViewRef(tweakId, id, webContentsId, parentWindowId) {

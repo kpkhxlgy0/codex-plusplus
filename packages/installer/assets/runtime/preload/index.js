@@ -177,7 +177,7 @@ async function runBrowserUiBridgeMethod(method, args, workerListeners) {
         case "usesOwlAppShell":
             return electron_1.ipcRenderer.sendSync(DESKTOP_GET_USES_OWL_APP_SHELL) === true;
         case "sendMessageFromView":
-            return electron_1.ipcRenderer.invoke(DESKTOP_MESSAGE_FROM_VIEW, args[0]);
+            return electron_1.ipcRenderer.invoke(DESKTOP_MESSAGE_FROM_VIEW, transformMessageFromView(args[0]));
         case "sendWorkerMessageFromView":
             return electron_1.ipcRenderer.invoke(desktopWorkerFromViewChannel(String(args[0])), args[1]);
         case "subscribeWorkerMessages":
@@ -198,6 +198,20 @@ async function runBrowserUiBridgeMethod(method, args, workerListeners) {
             return electron_1.ipcRenderer.invoke(DESKTOP_TRIGGER_SENTRY_TEST);
         default:
             throw new Error(`Unknown Codex++ browser UI bridge method: ${method}`);
+    }
+}
+function transformMessageFromView(message) {
+    try {
+        const hooks = globalThis.__codexPlusPlusBridgeHooks
+            ?? globalThis.__codexppBridgeHooks;
+        if (typeof hooks?.transformMessageFromView !== "function")
+            return message;
+        const transformed = hooks.transformMessageFromView(message);
+        return transformed === undefined ? message : transformed;
+    }
+    catch (error) {
+        fileLog("message-from-view transform FAILED", String(error?.stack ?? error));
+        return message;
     }
 }
 function subscribeBrowserUiWorkerMessages(workerId, workerListeners) {

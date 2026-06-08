@@ -13,7 +13,9 @@ const MAIN_SIDEBAR_ACTION_LABELS = [
     "Automation",
 ].map(normalizeLabel);
 const records = new Map();
+const mutedNativeActiveElements = new Map();
 let observer = null;
+let delegatedEventsInstalled = false;
 let refreshTimer = null;
 function rendererSidebarApi(tweakId) {
     return {
@@ -36,6 +38,7 @@ function registerSidebarAction(tweakId, options) {
     if (existing) {
         existing.options = normalized;
         renderRecord(existing);
+        syncNativeSidebarActiveState();
         return actionRef(existing);
     }
     const record = {
@@ -58,11 +61,13 @@ function actionRef(record) {
             const merged = normalizeOptions({ ...record.options, ...update, id: record.id });
             record.options = merged;
             renderRecord(record);
+            syncNativeSidebarActiveState();
             scheduleSidebarRefresh();
         },
         setActive(active) {
             record.options = { ...record.options, active };
             renderRecord(record);
+            syncNativeSidebarActiveState();
         },
         dispose() {
             disposeRecord(record);
@@ -81,6 +86,7 @@ function normalizeOptions(options) {
         id,
         label,
         tooltip: cleanString(options.tooltip) || label,
+        placement: options.placement === "start" ? "start" : "end",
         order: Number.isFinite(options.order) ? Number(options.order) : 50,
         active: options.active === true,
         iconSvg: cleanString(options.iconSvg) || undefined,
@@ -93,6 +99,7 @@ function ensureObserver() {
     observer = new MutationObserver(() => scheduleSidebarRefresh());
     observer.observe(document.documentElement, { childList: true, subtree: true });
     window.addEventListener("resize", scheduleSidebarRefresh, { passive: true });
+    ensureDelegatedSidebarEvents();
 }
 function stopObserverIfIdle() {
     if (records.size > 0)
@@ -100,10 +107,64 @@ function stopObserverIfIdle() {
     observer?.disconnect();
     observer = null;
     window.removeEventListener("resize", scheduleSidebarRefresh);
+    removeDelegatedSidebarEvents();
     if (refreshTimer) {
         clearTimeout(refreshTimer);
         refreshTimer = null;
     }
+}
+function ensureDelegatedSidebarEvents() {
+    if (delegatedEventsInstalled || typeof document === "undefined")
+        return;
+    delegatedEventsInstalled = true;
+    document.addEventListener("click", onDelegatedSidebarActionClick, true);
+    document.addEventListener("keydown", onDelegatedSidebarActionKeydown, true);
+}
+function removeDelegatedSidebarEvents() {
+    if (!delegatedEventsInstalled || typeof document === "undefined")
+        return;
+    delegatedEventsInstalled = false;
+    document.removeEventListener("click", onDelegatedSidebarActionClick, true);
+    document.removeEventListener("keydown", onDelegatedSidebarActionKeydown, true);
+}
+function onDelegatedSidebarActionClick(event) {
+    const action = sidebarActionNodeForEvent(event);
+    if (!action)
+        return;
+    const record = records.get(action.dataset.codexppSidebarAction || "");
+    if (!record)
+        return;
+    event.preventDefault();
+    event.stopPropagation();
+    void record.options.onClick?.(event);
+}
+function onDelegatedSidebarActionKeydown(event) {
+    if (event.key !== "Enter" && event.key !== " ")
+        return;
+    const action = sidebarActionNodeForEvent(event);
+    if (!action)
+        return;
+    event.preventDefault();
+    event.stopPropagation();
+    interactiveTarget(action).click();
+}
+function sidebarActionNodeForEvent(event) {
+    const target = eventTargetElement(event);
+    const action = target?.closest("[data-codexpp-sidebar-action]");
+    return domElement(action);
+}
+function eventTargetElement(event) {
+    return domElement(event.target);
+}
+function domElement(value) {
+    if (!value || typeof value !== "object")
+        return null;
+    const element = value;
+    if (typeof element.closest !== "function")
+        return null;
+    if (typeof element.getAttribute !== "function")
+        return null;
+    return element;
 }
 function scheduleSidebarRefresh() {
     if (refreshTimer)
@@ -119,22 +180,32 @@ function refreshSidebarActions() {
     const slot = findMainSidebarActionSlot();
     if (!slot)
         return;
-    for (const record of sortedRecords()) {
+    const sorted = sortedRecords();
+    for (const record of sorted) {
         if (!record.node || !record.node.isConnected || record.node.parentElement !== slot.container) {
             record.node?.remove();
             record.node = createActionNode(slot.template, record);
         }
         renderRecord(record);
     }
+    for (const record of sorted) {
+        if (record.node?.parentElement === slot.container)
+            record.node.remove();
+    }
     let anchor = slot.insertAfter;
-    for (const record of sortedRecords()) {
+    for (const record of sorted.filter((item) => item.options.placement === "start")) {
         if (!record.node)
             continue;
-        if (anchor?.nextSibling !== record.node) {
-            slot.container.insertBefore(record.node, anchor ? anchor.nextSibling : slot.container.firstChild);
-        }
+        slot.container.insertBefore(record.node, anchor ? anchor.nextSibling : slot.container.firstChild);
         anchor = record.node;
     }
+    for (const record of sorted.filter((item) => item.options.placement === "end")) {
+        if (!record.node)
+            continue;
+        slot.container.insertBefore(record.node, anchor ? anchor.nextSibling : slot.container.firstChild);
+        anchor = record.node;
+    }
+    syncNativeSidebarActiveState();
 }
 function sortedRecords() {
     return Array.from(records.values()).sort((a, b) => a.options.order - b.options.order || a.key.localeCompare(b.key));
@@ -143,21 +214,6 @@ function createActionNode(template, record) {
     const node = template.cloneNode(true);
     sanitizeActionNode(node);
     node.dataset.codexppSidebarAction = record.key;
-    node.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        void record.options.onClick?.(event);
-    });
-    const target = interactiveTarget(node);
-    if (!hasNativeActivation(target)) {
-        target.addEventListener("keydown", (event) => {
-            if (event.key !== "Enter" && event.key !== " ")
-                return;
-            event.preventDefault();
-            event.stopPropagation();
-            target.click();
-        });
-    }
     return node;
 }
 function renderRecord(record) {
@@ -167,6 +223,9 @@ function renderRecord(record) {
     const target = interactiveTarget(node);
     node.dataset.codexppSidebarAction = record.key;
     node.dataset.codexppSidebarActionActive = record.options.active ? "true" : "false";
+    if (target !== node)
+        target.dataset.codexppSidebarActionActive = record.options.active ? "true" : "false";
+    applyPlacementStyle(node, record);
     target.setAttribute("aria-label", record.options.label);
     target.setAttribute("title", record.options.tooltip);
     target.setAttribute("role", "button");
@@ -174,16 +233,28 @@ function renderRecord(record) {
     setActiveAttributes(node, record.options.active);
     if (target !== node)
         setActiveAttributes(target, record.options.active);
+    applyNativeLikeActiveStyle(target, record.options.active);
     replaceActionIcon(node, record.options.iconSvg);
     replaceActionLabel(node, record.options.label);
+    applyNativeLikeActiveStyle(target, record.options.active);
 }
 function disposeRecord(record) {
     record.node?.remove();
     record.node = null;
     records.delete(record.key);
+    syncNativeSidebarActiveState();
+}
+function applyPlacementStyle(node, record) {
+    if (record.options.placement === "start") {
+        node.style.order = String(-10000 + record.options.order);
+    }
+    else {
+        node.style.removeProperty("order");
+    }
 }
 function findMainSidebarActionSlot(root = document) {
-    const aside = root.querySelector?.("aside");
+    const aside = Array.from(root.querySelectorAll?.("aside") ?? [])
+        .find((candidate) => candidate instanceof HTMLElement && !!visibleBox(candidate));
     if (!aside)
         return null;
     const controls = visibleControls(aside)
@@ -191,14 +262,19 @@ function findMainSidebarActionSlot(root = document) {
         .filter((item) => MAIN_SIDEBAR_ACTION_LABELS.some((marker) => labelMatches(item.label, marker)));
     if (!controls.length)
         return null;
-    const templateControl = controls[0]?.control;
+    const sortedControls = controls
+        .map((item) => item.control)
+        .sort(compareDocumentPosition);
+    const templateControl = sortedControls[0];
     if (!templateControl)
         return null;
-    const group = actionGroupFor(aside, controls.map((item) => item.control));
+    const group = actionGroupFor(aside, sortedControls);
     const template = rowInGroup(group, templateControl);
-    const rows = controls.map((item) => rowInGroup(group, item.control)).filter(Boolean);
-    const insertAfter = rows.sort(compareDocumentPosition).at(-1) ?? template;
-    return { container: group, template, insertAfter };
+    const rows = sortedControls.map((control) => rowInGroup(group, control)).filter(Boolean);
+    const sortedRows = rows.sort(compareDocumentPosition);
+    const insertBefore = sortedRows[0] ?? template;
+    const insertAfter = sortedRows.at(-1) ?? template;
+    return { container: group, template, insertBefore, insertAfter };
 }
 function visibleControls(root) {
     return Array.from(root.querySelectorAll("button,a,[role='button'],[role='link']"))
@@ -218,8 +294,10 @@ function actionGroupFor(aside, controls) {
         return aside;
     let node = first.parentElement;
     while (node && node !== aside) {
-        const count = controls.filter((control) => node?.contains(control)).length;
-        if (count >= Math.min(2, controls.length))
+        const childRows = controls
+            .map((control) => childInContainer(node, control))
+            .filter(Boolean);
+        if (new Set(childRows).size >= Math.min(2, controls.length))
             return node;
         node = node.parentElement;
     }
@@ -230,6 +308,12 @@ function rowInGroup(group, control) {
     while (node.parentElement && node.parentElement !== group)
         node = node.parentElement;
     return node;
+}
+function childInContainer(container, control) {
+    let node = control;
+    while (node.parentElement && node.parentElement !== container)
+        node = node.parentElement;
+    return node.parentElement === container ? node : null;
 }
 function sanitizeActionNode(node) {
     const all = [node, ...Array.from(node.querySelectorAll("*"))];
@@ -252,25 +336,144 @@ function interactiveTarget(node) {
 function matchesControl(node) {
     return node.matches("button,a,[role='button'],[role='link']");
 }
-function hasNativeActivation(node) {
-    return node instanceof HTMLButtonElement || (node instanceof HTMLAnchorElement && !!node.href);
-}
 function setActiveAttributes(node, active) {
-    node.toggleAttribute("aria-current", active);
-    if (active)
+    if (active) {
+        node.setAttribute("aria-current", "page");
+        node.setAttribute("aria-selected", "true");
         node.setAttribute("data-state", "active");
-    else
+        node.setAttribute("data-active", "true");
+        node.setAttribute("data-selected", "true");
+    }
+    else {
+        node.removeAttribute("aria-current");
+        node.removeAttribute("aria-selected");
         node.removeAttribute("data-state");
+        node.removeAttribute("data-active");
+        node.removeAttribute("data-selected");
+    }
+}
+function applyNativeLikeActiveStyle(target, active) {
+    const content = activeContentElement(target);
+    const icon = target.querySelector("svg");
+    if (active) {
+        target.classList.remove("hover:bg-token-list-hover-background", "font-normal");
+        target.classList.add("bg-token-list-hover-background");
+        content?.classList.remove("text-token-foreground");
+        content?.classList.add("text-token-list-active-selection-foreground");
+        icon?.classList.add("text-token-list-active-selection-icon-foreground");
+    }
+    else {
+        target.classList.add("hover:bg-token-list-hover-background", "font-normal");
+        target.classList.remove("bg-token-list-hover-background");
+        content?.classList.add("text-token-foreground");
+        content?.classList.remove("text-token-list-active-selection-foreground");
+        icon?.classList.remove("text-token-list-active-selection-icon-foreground");
+    }
+}
+function activeContentElement(target) {
+    const tokenElement = target.querySelector(".text-token-foreground,.text-token-list-active-selection-foreground");
+    if (tokenElement)
+        return tokenElement;
+    return target.firstElementChild instanceof HTMLElement ? target.firstElementChild : target;
+}
+function syncNativeSidebarActiveState() {
+    if (hasActiveRecord())
+        muteNativeSidebarActiveState();
+    else
+        restoreNativeSidebarActiveState();
+}
+function hasActiveRecord() {
+    return Array.from(records.values()).some((record) => record.options.active && record.node?.isConnected);
+}
+function muteNativeSidebarActiveState(root = document) {
+    const aside = Array.from(root.querySelectorAll?.("aside") ?? [])
+        .find((candidate) => candidate instanceof HTMLElement && !!visibleBox(candidate));
+    if (!aside)
+        return;
+    const controls = Array.from(aside.querySelectorAll("button,a,[role='button'],[role='link']"));
+    for (const control of controls) {
+        if (control.closest("[data-codexpp-sidebar-action]"))
+            continue;
+        if (!isNativeActiveControl(control))
+            continue;
+        muteNativeActiveElement(control);
+        for (const child of activeSelectionDescendants(control))
+            muteNativeActiveElement(child);
+    }
+}
+function restoreNativeSidebarActiveState() {
+    for (const [element, state] of Array.from(mutedNativeActiveElements.entries())) {
+        if (element.isConnected) {
+            element.className = state.className;
+            restoreNullableAttribute(element, "aria-current", state.ariaCurrent);
+            restoreNullableAttribute(element, "aria-selected", state.ariaSelected);
+            restoreNullableAttribute(element, "data-state", state.dataState);
+            restoreNullableAttribute(element, "data-active", state.dataActive);
+            restoreNullableAttribute(element, "data-selected", state.dataSelected);
+        }
+        mutedNativeActiveElements.delete(element);
+    }
+}
+function muteNativeActiveElement(element) {
+    if (!mutedNativeActiveElements.has(element)) {
+        mutedNativeActiveElements.set(element, {
+            className: element.className,
+            ariaCurrent: element.getAttribute("aria-current"),
+            ariaSelected: element.getAttribute("aria-selected"),
+            dataState: element.getAttribute("data-state"),
+            dataActive: element.getAttribute("data-active"),
+            dataSelected: element.getAttribute("data-selected"),
+        });
+    }
+    element.removeAttribute("aria-current");
+    element.removeAttribute("aria-selected");
+    element.removeAttribute("data-state");
+    element.removeAttribute("data-active");
+    element.removeAttribute("data-selected");
+    element.classList.remove("active", "bg-token-list-hover-background", "text-token-list-active-selection-foreground", "text-token-list-active-selection-icon-foreground");
+    if (matchesControl(element))
+        element.classList.add("hover:bg-token-list-hover-background", "font-normal");
+}
+function activeSelectionDescendants(control) {
+    return Array.from(control.querySelectorAll(".bg-token-list-hover-background,.text-token-list-active-selection-foreground,.text-token-list-active-selection-icon-foreground"));
+}
+function isNativeActiveControl(control) {
+    return control.getAttribute("aria-current") === "page" ||
+        control.getAttribute("aria-selected") === "true" ||
+        control.getAttribute("data-state") === "active" ||
+        control.getAttribute("data-active") === "true" ||
+        control.getAttribute("data-selected") === "true" ||
+        control.classList.contains("active") ||
+        control.classList.contains("bg-token-list-hover-background") ||
+        activeSelectionDescendants(control).length > 0;
+}
+function restoreNullableAttribute(element, name, value) {
+    if (value === null)
+        element.removeAttribute(name);
+    else
+        element.setAttribute(name, value);
 }
 function replaceActionIcon(node, iconSvg) {
     const svg = parseSvg(iconSvg || defaultSidebarIconSvg());
     const current = node.querySelector("svg");
     if (current && svg) {
+        copyIconPresentation(current, svg);
         current.replaceWith(svg);
         return;
     }
     if (svg)
         node.prepend(svg);
+}
+function copyIconPresentation(from, to) {
+    for (const attr of ["class", "style", "width", "height"]) {
+        const value = from.getAttribute(attr);
+        if (value)
+            to.setAttribute(attr, value);
+    }
+    if (!to.getAttribute("width") && !to.getAttribute("class"))
+        to.setAttribute("width", "16");
+    if (!to.getAttribute("height") && !to.getAttribute("class"))
+        to.setAttribute("height", "16");
 }
 function replaceActionLabel(node, label) {
     const textNodes = [];
@@ -283,12 +486,26 @@ function replaceActionLabel(node, label) {
     if (textNodes.length) {
         textNodes[0].textContent = label;
         for (const extra of textNodes.slice(1))
-            extra.textContent = "";
+            removeAccessoryTextNode(extra, node);
         return;
     }
     const span = document.createElement("span");
     span.textContent = label;
     node.appendChild(span);
+}
+function removeAccessoryTextNode(text, root) {
+    const original = cleanString(text.textContent);
+    let node = text.parentElement;
+    while (node && node !== root) {
+        const content = cleanString(node.textContent);
+        const hasGraphic = !!node.querySelector("svg,img");
+        if (content === original && !hasGraphic) {
+            node.remove();
+            return;
+        }
+        node = node.parentElement;
+    }
+    text.textContent = "";
 }
 function parseSvg(svgText) {
     const template = document.createElement("template");

@@ -30,6 +30,7 @@ interface RepairCliOpts {
   app?: string;
   quiet?: boolean;
   force?: boolean;
+  runtime?: boolean;
   local?: boolean;
   localSigning?: boolean;
   "local-signing"?: boolean;
@@ -86,6 +87,11 @@ async function runCreateTweak(target: string, opts: never): Promise<void> {
   return createTweak(target, opts);
 }
 
+async function runNewTweak(target: string | undefined, opts: never): Promise<void> {
+  const { newTweak } = await import("./commands/new-tweak.js");
+  return newTweak(target, opts);
+}
+
 async function runValidateTweak(target?: string): Promise<void> {
   const { validateTweak } = await import("./commands/validate-tweak.js");
   return validateTweak(target);
@@ -135,6 +141,7 @@ prog
   .option("--app", "Path to Codex.app / install dir")
   .option("--quiet", "Suppress non-error output")
   .option("--force", "Re-apply even if the patch appears intact")
+  .option("--runtime", "Refresh Codex++ runtime assets when the app patch is intact")
   .option("--local", "Use a stable local signing identity on macOS")
   .option("--local-signing", "Alias for --local")
   .option("--watcher", "Run from the auto-repair watcher")
@@ -202,6 +209,18 @@ prog
   .option("--scope", "renderer, main, or both")
   .option("--force", "Write into an existing empty directory")
   .action(wrap(runCreateTweak));
+
+prog
+  .command("new-tweak [target]")
+  .describe("Start a guided walkthrough for a new local tweak")
+  .option("--id", "Manifest id, e.g. com.you.my-tweak")
+  .option("--name", "Human-readable tweak name")
+  .option("--repo", "GitHub repo in owner/repo form")
+  .option("--scope", "renderer, main, or both")
+  .option("--git", "Initialize a git repository")
+  .option("--cwd", "Default to creating the tweak in the current working directory")
+  .option("--force", "Write into an existing empty directory")
+  .action(wrap(runNewTweak));
 
 prog
   .command("validate-tweak [target]")

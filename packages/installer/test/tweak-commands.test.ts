@@ -9,7 +9,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import test from "node:test";
 import {
   buildCliFailureIssueUrl,
@@ -20,6 +20,7 @@ import {
 import { findCodexMainCandidates } from "../src/commands/install";
 import { createTweak } from "../src/commands/create-tweak";
 import { devTweak } from "../src/commands/dev-tweak";
+import { newTweak } from "../src/commands/new-tweak";
 import { safeMode } from "../src/commands/safe-mode";
 import {
   ensureCliExecutable,
@@ -66,6 +67,146 @@ test("createTweak refuses non-empty target directories unless forced empty", () 
       () => withSilencedConsole(() => createTweak(dir, { repo: "example/existing" })),
       /not empty/,
     );
+  });
+});
+
+test("newTweak walks through scaffold choices and initializes git", async () => {
+  await withTempDirAsync(async (root) => {
+    const dir = join(root, "guided");
+    const commands: Array<{ command: string; args: string[]; cwd: string }> = [];
+
+    await withSilencedConsoleAsync(() =>
+      newTweak(undefined, {}, {
+        prompt: (async () => ({
+          name: "Guided Tweak",
+          target: dir,
+          id: "com.example.guided",
+          repo: "example/guided",
+          scope: "renderer",
+          git: true,
+        })) as never,
+        runCommand: (command, args, cwd) => {
+          commands.push({ command, args, cwd });
+          mkdirSync(join(cwd, ".git"));
+          return { status: 0 };
+        },
+      }),
+    );
+
+    const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+    assert.equal(manifest.name, "Guided Tweak");
+    assert.equal(manifest.id, "com.example.guided");
+    assert.equal(manifest.githubRepo, "example/guided");
+    assert.equal(manifest.scope, "renderer");
+    assert.deepEqual(commands, [{ command: "git", args: ["init"], cwd: dir }]);
+    assert.equal(existsSync(join(dir, ".git")), true);
+  });
+});
+
+test("newTweak can write into an existing empty directory", async () => {
+  await withTempDirAsync(async (root) => {
+    const dir = join(root, "empty");
+    mkdirSync(dir);
+
+    await withSilencedConsoleAsync(() =>
+      newTweak(dir, { git: false }, {
+        prompt: (async () => ({
+          name: "Empty Target",
+          id: "com.example.empty-target",
+          repo: "example/empty-target",
+          scope: "both",
+        })) as never,
+      }),
+    );
+
+    assert.equal(existsSync(join(dir, "manifest.json")), true);
+  });
+});
+
+test("newTweak leaves the name prompt blank and defaults manifest id from username", async () => {
+  await withTempEnvAsync(async (envRoot) => {
+    let nameInitial: unknown;
+    let idInitial = "";
+
+    await withSilencedConsoleAsync(() =>
+      newTweak(undefined, { git: false }, {
+        username: "Bennett.Local",
+        prompt: (async (questions: Array<{ name: string; initial?: unknown }>) => {
+          nameInitial = questions.find((question) => question.name === "name")?.initial;
+          const idQuestion = questions.find((question) => question.name === "id");
+          assert.equal(typeof idQuestion?.initial, "function");
+          idInitial = (idQuestion.initial as (prev: string, values: { name: string }) => string)(
+            "",
+            { name: "Better Browser" },
+          );
+          return {
+            name: "Better Browser",
+            target: join(envRoot, "tweaks", "better-browser"),
+            id: idInitial,
+            repo: "example/better-browser",
+            scope: "renderer",
+          };
+        }) as never,
+      }),
+    );
+
+    assert.equal(nameInitial, "");
+    assert.equal(idInitial, "com.bennett-local.better-browser");
+    assert.equal(
+      JSON.parse(readFileSync(join(envRoot, "tweaks", "better-browser", "manifest.json"), "utf8"))
+        .id,
+      "com.bennett-local.better-browser",
+    );
+  });
+});
+
+test("newTweak defaults to the configured tweaks directory", async () => {
+  await withTempEnvAsync(async (envRoot) => {
+    let initialTarget = "";
+
+    await withSilencedConsoleAsync(() =>
+      newTweak(undefined, { name: "Default Home", git: false }, {
+        prompt: (async (questions: Array<{ name: string; initial?: unknown }>) => {
+          const targetQuestion = questions.find((question) => question.name === "target");
+          assert.equal(typeof targetQuestion?.initial, "function");
+          initialTarget = (targetQuestion.initial as (prev: string) => string)("Default Home");
+          return {
+            target: initialTarget,
+            id: "com.example.default-home",
+            repo: "example/default-home",
+            scope: "renderer",
+          };
+        }) as never,
+      }),
+    );
+
+    assert.equal(initialTarget, join(envRoot, "tweaks", "default-home"));
+    assert.equal(existsSync(join(envRoot, "tweaks", "default-home", "manifest.json")), true);
+  });
+});
+
+test("newTweak can default to the current working directory", async () => {
+  await withTempEnvAsync(async () => {
+    let initialTarget = "";
+
+    await withSilencedConsoleAsync(() =>
+      newTweak(undefined, { name: "Current Directory", cwd: true, git: false }, {
+        prompt: (async (questions: Array<{ name: string; initial?: unknown }>) => {
+          const targetQuestion = questions.find((question) => question.name === "target");
+          assert.equal(typeof targetQuestion?.initial, "function");
+          initialTarget = (targetQuestion.initial as (prev: string) => string)("Current Directory");
+          return {
+            target: initialTarget,
+            id: "com.example.current-directory",
+            repo: "example/current-directory",
+            scope: "renderer",
+          };
+        }) as never,
+      }),
+    );
+
+    assert.equal(initialTarget, "./current-directory");
+    rmSync(resolve("current-directory"), { recursive: true, force: true });
   });
 });
 

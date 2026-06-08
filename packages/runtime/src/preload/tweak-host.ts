@@ -71,6 +71,10 @@ interface ElectronBridge {
 }
 
 const loaded = new Map<string, { stop?: () => void }>();
+type MessageFromViewTransformer = (message: unknown) => unknown | undefined;
+const messageFromViewTransformers = new Set<MessageFromViewTransformer>();
+
+installBridgeHooks();
 
 export async function startTweakHost(): Promise<void> {
   const tweaks = (await ipcRenderer.invoke("codexpp:list-tweaks")) as ListedTweak[];
@@ -232,6 +236,16 @@ function makeRendererApi(manifest: TweakManifest, paths: UserPaths): TweakApi {
       },
       waitForElement,
     },
+    bridge: {
+      addMessageFromViewTransformer: (transformer) => {
+        messageFromViewTransformers.add(transformer);
+        return {
+          unregister: () => {
+            messageFromViewTransformers.delete(transformer);
+          },
+        };
+      },
+    },
     ipc: {
       on: (c, h) => {
         const wrapped = (_e: unknown, ...args: unknown[]) => h(...args);
@@ -246,6 +260,40 @@ function makeRendererApi(manifest: TweakManifest, paths: UserPaths): TweakApi {
     model: rendererModelApi(id),
     codex: rendererCodexApi(id),
   };
+}
+
+function installBridgeHooks(): void {
+  const hooks = {
+    addMessageFromViewTransformer(transformer: MessageFromViewTransformer) {
+      messageFromViewTransformers.add(transformer);
+      return () => messageFromViewTransformers.delete(transformer);
+    },
+    transformMessageFromView(message: unknown) {
+      let current = message;
+      for (const transformer of Array.from(messageFromViewTransformers)) {
+        try {
+          const next = transformer(current);
+          if (next !== undefined) current = next;
+        } catch (error) {
+          console.warn("[codex-plusplus] message-from-view transformer failed", error);
+          try {
+            ipcRenderer.send(
+              "codexpp:preload-log",
+              "warn",
+              "message-from-view transformer failed: " + String((error as Error)?.stack ?? error),
+            );
+          } catch {}
+        }
+      }
+      return current;
+    },
+  };
+  const target = window as unknown as {
+    __codexPlusPlusBridgeHooks?: typeof hooks;
+    __codexppBridgeHooks?: typeof hooks;
+  };
+  target.__codexPlusPlusBridgeHooks = hooks;
+  target.__codexppBridgeHooks = hooks;
 }
 
 function rendererCodexApi(tweakId: string): NonNullable<TweakApi["codex"]> {

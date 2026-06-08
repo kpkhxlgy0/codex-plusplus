@@ -18,6 +18,21 @@ reload from Settings -> Tweaks or restart Codex.
 
 ## Create a Tweak
 
+For a guided setup, run:
+
+```sh
+codexplusplus new-tweak
+```
+
+It asks for the tweak name, directory, manifest id, GitHub repo, runtime scope,
+and whether to initialize a git repository. By default, it creates the tweak in
+your Codex++ tweaks directory so it is immediately discoverable. The manifest id
+default uses your local computer username, for example
+`com.bennett.my-tweak`. Use `codexplusplus new-tweak --cwd` to default to a
+folder under your current working directory instead.
+
+For non-interactive scaffolding, run:
+
 ```sh
 codexplusplus create-tweak ./my-tweak \
   --id com.you.my-tweak \

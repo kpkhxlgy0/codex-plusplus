@@ -126,6 +126,7 @@ Runtime flow:
 | `codexplusplus status` | Show installed version and patch state. |
 | `codexplusplus debug` | Show app path, runtime type, paths, open state, and bridge status. |
 | `codexplusplus repair` | Re-apply the patch after an app update or broken install. |
+| `codexplusplus repair --runtime` | Refresh staged Codex++ runtime assets without repatching when the app patch is intact. |
 | `codexplusplus update` | Update Codex++ from the latest GitHub release. |
 | `codexplusplus update-codex` | Prepare Codex for its official updater, then re-patch after restart. |
 | `codexplusplus doctor` | Diagnose signatures, integrity, permissions, and common failures. |
@@ -138,6 +139,8 @@ Tweak development commands:
 
 | Command | What it does |
 |---|---|
+| `codexplusplus new-tweak` | Start an interactive tweak setup walkthrough. |
+| `codexplusplus new-tweak --cwd` | Start the walkthrough with a current-directory target default. |
 | `codexplusplus create-tweak ./my-tweak` | Create a new tweak folder. |
 | `codexplusplus validate-tweak ./my-tweak` | Validate a tweak manifest and entry file. |
 | `codexplusplus dev ./my-tweak` | Link a local tweak into Codex++ for development. |
@@ -222,10 +225,12 @@ module.exports = {
 Local dev loop:
 
 ```sh
-codexplusplus create-tweak ./my-tweak --id com.you.my-tweak --name "My Tweak"
+codexplusplus new-tweak
 codexplusplus validate-tweak ./my-tweak
 codexplusplus dev ./my-tweak
 ```
+
+For scripted setup, use `codexplusplus create-tweak ./my-tweak --id com.you.my-tweak --name "My Tweak"`.
 
 Full docs are in [Writing Tweaks](./docs/WRITING-TWEAKS.md).
 

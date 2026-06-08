@@ -13,6 +13,7 @@ interface CreateTweakOpts {
   repo?: string;
   scope?: TweakScope;
   force?: boolean;
+  quiet?: boolean;
 }
 
 export function createTweak(target: string, opts: CreateTweakOpts = {}): void {
@@ -67,6 +68,8 @@ export function createTweak(target: string, opts: CreateTweakOpts = {}): void {
     },
   });
   writeFileSync(resolve(dir, "README.md"), readme(manifest), "utf8");
+
+  if (opts.quiet) return;
 
   console.log(kleur.green().bold("✓ Created Codex++ tweak"));
   console.log(`  Directory: ${kleur.cyan(dir)}`);
@@ -170,7 +173,7 @@ function writeJson(dir: string, name: string, value: unknown): void {
   writeFileSync(resolve(dir, name), JSON.stringify(value, null, 2) + "\n", "utf8");
 }
 
-function slugify(input: string): string {
+export function slugify(input: string): string {
   return input
     .trim()
     .toLowerCase()
@@ -178,7 +181,7 @@ function slugify(input: string): string {
     .replace(/^-+|-+$/g, "") || "my-tweak";
 }
 
-function titleize(input: string): string {
+export function titleize(input: string): string {
   return input
     .split(/[-_.]+/g)
     .filter(Boolean)

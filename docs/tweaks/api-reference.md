@@ -532,6 +532,7 @@ interface CodexSidebarActionOptions {
   label: string;
   tooltip?: string;
   iconSvg?: string;
+  placement?: "start" | "end";
   order?: number;
   active?: boolean;
   onClick?: (event: MouseEvent) => void | Promise<void>;
@@ -556,6 +557,8 @@ module.exports = {
       id: "home",
       label: "Home",
       iconSvg: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M4 11.5 12 5l8 6.5"/><path d="M6 10.5V20h12v-9.5"/></svg>',
+      placement: "start",
+      order: 0,
       onClick() {
         homeAction.setActive(true);
       },
@@ -567,8 +570,10 @@ module.exports = {
 };
 ```
 
-Relative placement is controlled by `order`; lower values appear earlier among
-Codex++ sidebar actions. Dispose long-lived actions from `stop()`.
+Use `placement: "start"` to insert before Codex's native top actions, or omit it
+to append after them. Relative placement within each group is controlled by
+`order`; lower values appear earlier among Codex++ sidebar actions. Dispose
+long-lived actions from `stop()`.
 
 ## `CodexRuntimeType`
 

@@ -2,6 +2,7 @@ import type { CodexSidebarActionOptions, CodexSidebarActionRef, CodexSidebarApi 
 interface SidebarSlot {
     container: HTMLElement;
     template: HTMLElement;
+    insertBefore: HTMLElement | null;
     insertAfter: HTMLElement | null;
 }
 export declare function rendererSidebarApi(tweakId: string): CodexSidebarApi;
