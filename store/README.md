@@ -2,7 +2,7 @@
 
 The in-app Tweak Store reads the live reviewed registry from GitHub Pages:
 
-`https://b-nnett.github.io/codex-plusplus/store/index.json`
+`https://kpkhxlgy0.github.io/codex-plusplus/store/index.json`
 
 Released Codex++ builds fetch this URL whenever the store page is opened or
 refreshed. The registry can change without a Codex++ app update.
