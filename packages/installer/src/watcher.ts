@@ -17,7 +17,7 @@
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { homedir, platform, userInfo } from "node:os";
 import { execFileSync } from "node:child_process";
-import { join, dirname } from "node:path";
+import { join, dirname, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 import { chownForTargetUser, targetUserHome, targetUserOwnership } from "./ownership.js";
 
@@ -61,10 +61,10 @@ function launchdLogPath(): string {
 export function launchdWatchPaths(appRoot: string): string[] {
   return [
     appRoot,
-    join(appRoot, "Contents"),
-    join(appRoot, "Contents", "Info.plist"),
-    join(appRoot, "Contents", "Resources"),
-    join(appRoot, "Contents", "Resources", "app.asar"),
+    posix.join(appRoot, "Contents"),
+    posix.join(appRoot, "Contents", "Info.plist"),
+    posix.join(appRoot, "Contents", "Resources"),
+    posix.join(appRoot, "Contents", "Resources", "app.asar"),
   ];
 }
 

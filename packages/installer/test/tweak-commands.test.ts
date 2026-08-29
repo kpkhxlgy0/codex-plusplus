@@ -490,7 +490,7 @@ test("Codex main candidates include nested recovered Vite bundle files", () => {
 test("patch failure report URL includes a prefilled GitHub issue", () => {
   const url = new URL(buildPatchFailureIssueUrl("Codex window services hook point not found"));
 
-  assert.equal(url.origin + url.pathname, "https://github.com/b-nnett/codex-plusplus/issues/new");
+  assert.equal(url.origin + url.pathname, "https://github.com/kpkhxlgy0/codex-plusplus/issues/new");
   assert.equal(url.searchParams.get("title"), "Codex++ failed to patch Codex after update");
   assert.match(url.searchParams.get("body") ?? "", /Codex window services hook point not found/);
   assert.match(url.searchParams.get("body") ?? "", /Platform:/);
@@ -499,7 +499,7 @@ test("patch failure report URL includes a prefilled GitHub issue", () => {
 test("CLI failure report URL includes command and environment details", () => {
   const url = new URL(buildCliFailureIssueUrl("install", "codesign not installed"));
 
-  assert.equal(url.origin + url.pathname, "https://github.com/b-nnett/codex-plusplus/issues/new");
+  assert.equal(url.origin + url.pathname, "https://github.com/kpkhxlgy0/codex-plusplus/issues/new");
   assert.equal(url.searchParams.get("title"), "Codex++ install failed");
   assert.match(url.searchParams.get("body") ?? "", /codexplusplus install/);
   assert.match(url.searchParams.get("body") ?? "", /codesign not installed/);
@@ -545,8 +545,8 @@ test("self-update state persists human-readable diagnostics", () => {
       currentVersion: "0.1.3",
       latestVersion: "0.1.4",
       targetRef: "v0.1.4",
-      releaseUrl: "https://github.com/b-nnett/codex-plusplus/releases/tag/v0.1.4",
-      repo: "b-nnett/codex-plusplus",
+      releaseUrl: "https://github.com/kpkhxlgy0/codex-plusplus/releases/tag/v0.1.4",
+      repo: "kpkhxlgy0/codex-plusplus",
       channel: "stable",
       sourceRoot: root,
       error: "download failed",
@@ -570,8 +570,8 @@ test("watcher self-update checks stay hourly while repair can run more often", (
       currentVersion: "0.1.4",
       latestVersion: "0.1.4",
       targetRef: "v0.1.4",
-      releaseUrl: "https://github.com/b-nnett/codex-plusplus/releases/tag/v0.1.4",
-      repo: "b-nnett/codex-plusplus",
+      releaseUrl: "https://github.com/kpkhxlgy0/codex-plusplus/releases/tag/v0.1.4",
+      repo: "kpkhxlgy0/codex-plusplus",
       channel: "stable",
       sourceRoot: root,
     });

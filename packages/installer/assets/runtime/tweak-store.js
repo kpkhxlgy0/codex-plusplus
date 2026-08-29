@@ -8,8 +8,8 @@ exports.normalizeStoreEntry = normalizeStoreEntry;
 exports.storeArchiveUrl = storeArchiveUrl;
 exports.buildTweakPublishIssueUrl = buildTweakPublishIssueUrl;
 exports.isFullCommitSha = isFullCommitSha;
-exports.DEFAULT_TWEAK_STORE_INDEX_URL = "https://b-nnett.github.io/codex-plusplus/store/index.json";
-exports.TWEAK_STORE_REVIEW_ISSUE_URL = "https://github.com/b-nnett/codex-plusplus/issues/new";
+exports.DEFAULT_TWEAK_STORE_INDEX_URL = "https://kpkhxlgy0.github.io/codex-plusplus/store/index.json";
+exports.TWEAK_STORE_REVIEW_ISSUE_URL = "https://github.com/kpkhxlgy0/codex-plusplus/issues/new";
 const GITHUB_REPO_RE = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 const FULL_SHA_RE = /^[a-f0-9]{40}$/i;
 function normalizeGitHubRepo(input) {

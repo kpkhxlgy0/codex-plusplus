@@ -33,7 +33,7 @@ const tweak_store_1 = require("../tweak-store");
 const settings_dom_heuristics_1 = require("./settings-dom-heuristics");
 const settings_icons_1 = require("./settings-icons");
 const settings_svg_1 = require("./settings-svg");
-const CODEX_PLUSPLUS_RELEASES_URL = "https://github.com/b-nnett/codex-plusplus/releases";
+const CODEX_PLUSPLUS_RELEASES_URL = "https://github.com/kpkhxlgy0/codex-plusplus/releases";
 const state = {
     sections: new Map(),
     pages: new Map(),
@@ -845,7 +845,7 @@ function updateChannelRow(config) {
     action?.appendChild(select);
     if (config.updateChannel === "custom") {
         action?.appendChild(compactButton("Edit", () => {
-            const repo = window.prompt("GitHub repo", config.updateRepo || "b-nnett/codex-plusplus");
+            const repo = window.prompt("GitHub repo", config.updateRepo || "kpkhxlgy0/codex-plusplus");
             if (repo === null)
                 return;
             const ref = window.prompt("Git ref", config.updateRef || "main");
@@ -1165,7 +1165,7 @@ function updateSummary(check) {
 }
 function updateChannelSummary(config) {
     if (config.updateChannel === "custom") {
-        return `${config.updateRepo || "b-nnett/codex-plusplus"} ${config.updateRef || "(no ref set)"}`;
+        return `${config.updateRepo || "kpkhxlgy0/codex-plusplus"} ${config.updateRef || "(no ref set)"}`;
     }
     if (config.updateChannel === "prerelease") {
         return "Use the newest published GitHub release, including prereleases.";
@@ -1252,7 +1252,7 @@ function reportBugRow() {
             "## Logs",
             "Attach relevant lines from the Codex++ log directory.",
         ].join("\n"));
-        void electron_1.ipcRenderer.invoke("codexpp:open-external", `https://github.com/b-nnett/codex-plusplus/issues/new?title=${title}&body=${body}`);
+        void electron_1.ipcRenderer.invoke("codexpp:open-external", `https://github.com/kpkhxlgy0/codex-plusplus/issues/new?title=${title}&body=${body}`);
     }));
     return row;
 }

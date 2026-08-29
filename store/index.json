@@ -21,7 +21,7 @@
         ],
         "scope": "both",
         "main": "index.js",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/ui-improvements.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/ui-improvements.png"
       },
       "repo": "b-nnett/codex-plusplus-bennett-ui",
       "approvedCommitSha": "cc34f6d1dc6e8f624ee4d0152938efccca268d4a",
@@ -48,7 +48,7 @@
         ],
         "scope": "main",
         "main": "index.js",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/better-browser.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/better-browser.png"
       },
       "repo": "b-nnett/codex-plusplus-better-browser",
       "approvedCommitSha": "dfcc75ec0d8e980698974a3a2b80531cd553af77",
@@ -78,7 +78,7 @@
         "permissions": [
           "settings"
         ],
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/better-terminal.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/better-terminal.png"
       },
       "repo": "b-nnett/codex-plusplus-better-terminal",
       "approvedCommitSha": "b0398c839a42134d5cb301c432d43a9f13ac22e0",
@@ -105,7 +105,7 @@
         ],
         "scope": "both",
         "main": "index.js",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/tab-switcher.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/tab-switcher.png"
       },
       "repo": "b-nnett/codex-plusplus-tab-switcher",
       "approvedCommitSha": "97b1226fb264dfebe7dbf5286497b99613981287",
@@ -131,7 +131,7 @@
         ],
         "scope": "both",
         "main": "index.js",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/followup.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/followup.png"
       },
       "repo": "Arconte112/codex-plusplus-followup",
       "approvedCommitSha": "3d169c4f2f6508c3cf6a89a6531ed939209b5d6c",
@@ -156,7 +156,7 @@
           "productivity"
         ],
         "scope": "renderer",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/keyboard-shortcuts.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/keyboard-shortcuts.png"
       },
       "repo": "b-nnett/codex-plusplus-keyboard-shortcuts",
       "approvedCommitSha": "2fa2e5beeda1766b53288a6e28662443889e1f5b",
@@ -183,7 +183,7 @@
         ],
         "scope": "renderer",
         "main": "index.js",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/esc.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/esc.png"
       },
       "repo": "qoli/codex-disable-escape-tweak",
       "approvedCommitSha": "241f066ab315c98ff1df15a884f50d72328c8630",
@@ -210,7 +210,7 @@
         ],
         "scope": "both",
         "main": "index.bundled.js",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/auth-switcher.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/auth-switcher.png"
       },
       "repo": "erknvl/codex-plusplus-account-switcher",
       "approvedCommitSha": "a37737530532170802262009af376da1a9fc25d6",
@@ -225,7 +225,7 @@
         "version": "0.1.0",
         "githubRepo": "b-nnett/codex-plusplus-file-editor",
         "description": "Makes Codex right-panel file tabs editable with debounced autosave.",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/file-editor.png",
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/file-editor.png",
         "author": {
           "name": "bennett",
           "url": "https://github.com/anomalyco/codex-plusplus"
@@ -269,7 +269,7 @@
         ],
         "scope": "both",
         "main": "index.js",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/goal.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/goal.png"
       },
       "repo": "b-nnett/codex-plusplus-goal",
       "approvedCommitSha": "e38f99fa0116cf76dcd21150b0ae297f184e5157",
@@ -296,7 +296,7 @@
         ],
         "scope": "both",
         "main": "index.js",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/ios-simulator.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/ios-simulator.png"
       },
       "repo": "b-nnett/codex-plusplus-ios-simulator",
       "approvedCommitSha": "0ec57f6b7f0f1faee7be891e7be06a9682ddcba2",
@@ -330,7 +330,7 @@
             "mcp-server.js"
           ]
         },
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/project-home.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/project-home.png"
       },
       "repo": "b-nnett/codex-plusplus-project-home",
       "approvedCommitSha": "1d97062f707caafdac5ed2af8bd9a986341dc912",
@@ -358,7 +358,7 @@
         "scope": "both",
         "main": "index.js",
         "minRuntime": "0.1.0",
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/thought-fixer.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/thought-fixer.png"
       },
       "repo": "shivam2014/codex-plusplus-reasoning-fixes",
       "approvedCommitSha": "2766527ef1b159ee29d338fc7475372010ed7f6f",
@@ -391,7 +391,7 @@
             "mcp-server.js"
           ]
         },
-        "iconUrl": "https://b-nnett.github.io/codex-plusplus/store/icons/windows-computer-use.png"
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/windows-computer-use.png"
       },
       "repo": "b-nnett/codex-plusplus-windows-computer-use",
       "approvedCommitSha": "1bb59c73f16f2ec3c3797168163d48d759eac706",

@@ -90,7 +90,7 @@ const SIGNED_CODEX_BACKUP = join(userRoot, "backup", "Codex.app");
 const CODEX_PLUSPLUS_CLI_SHIM = join(userRoot, "bin", process.platform === "win32" ? "codexplusplus.cmd" : "codexplusplus");
 const POST_UPDATE_REPAIR_LOG_FILE = join(LOG_DIR, "post-update-repair.log");
 const CODEX_PLUSPLUS_VERSION = "1.0.1";
-const CODEX_PLUSPLUS_REPO = "b-nnett/codex-plusplus";
+const CODEX_PLUSPLUS_REPO = "kpkhxlgy0/codex-plusplus";
 const TWEAK_STORE_INDEX_URL = process.env.CODEX_PLUSPLUS_STORE_INDEX_URL ?? DEFAULT_TWEAK_STORE_INDEX_URL;
 const CODEX_WINDOW_SERVICES_KEY = "__codexpp_window_services__";
 const DEBUG_WEB_CONTENTS_LOG = process.env.CODEXPP_DEBUG_WEB_CONTENTS === "1";

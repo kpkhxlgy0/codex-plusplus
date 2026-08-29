@@ -52,7 +52,7 @@ import {
 } from "./settings-icons";
 import { appendSvgHtml, svgElement } from "./settings-svg";
 
-const CODEX_PLUSPLUS_RELEASES_URL = "https://github.com/b-nnett/codex-plusplus/releases";
+const CODEX_PLUSPLUS_RELEASES_URL = "https://github.com/kpkhxlgy0/codex-plusplus/releases";
 
 // Mirrors the runtime's main-side ListedTweak shape (kept in sync manually).
 interface ListedTweak {
@@ -1071,7 +1071,7 @@ function updateChannelRow(config: CodexPlusPlusConfig): HTMLElement {
   if (config.updateChannel === "custom") {
     action?.appendChild(
       compactButton("Edit", () => {
-        const repo = window.prompt("GitHub repo", config.updateRepo || "b-nnett/codex-plusplus");
+        const repo = window.prompt("GitHub repo", config.updateRepo || "kpkhxlgy0/codex-plusplus");
         if (repo === null) return;
         const ref = window.prompt("Git ref", config.updateRef || "main");
         if (ref === null) return;
@@ -1408,7 +1408,7 @@ function updateSummary(check: CodexPlusPlusUpdateCheck | null): string {
 
 function updateChannelSummary(config: CodexPlusPlusConfig): string {
   if (config.updateChannel === "custom") {
-    return `${config.updateRepo || "b-nnett/codex-plusplus"} ${config.updateRef || "(no ref set)"}`;
+    return `${config.updateRepo || "kpkhxlgy0/codex-plusplus"} ${config.updateRef || "(no ref set)"}`;
   }
   if (config.updateChannel === "prerelease") {
     return "Use the newest published GitHub release, including prereleases.";
@@ -1502,7 +1502,7 @@ function reportBugRow(): HTMLElement {
       );
       void ipcRenderer.invoke(
         "codexpp:open-external",
-        `https://github.com/b-nnett/codex-plusplus/issues/new?title=${title}&body=${body}`,
+        `https://github.com/kpkhxlgy0/codex-plusplus/issues/new?title=${title}&body=${body}`,
       );
     }),
   );

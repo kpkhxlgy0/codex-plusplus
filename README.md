@@ -46,33 +46,33 @@ processes, and tweak-owned native modules.
 Agentic install, from Codex:
 
 ```text
-Inspect and install this for me: https://github.com/b-nnett/codex-plusplus
+Inspect and install this for me: https://github.com/kpkhxlgy0/codex-plusplus
 Tell me where you install it and send me the local path for adding new tweaks.
 ```
 
 Homebrew:
 
 ```sh
-brew install b-nnett/codex-plusplus/codexplusplus
+brew install kpkhxlgy0/codex-plusplus/codexplusplus
 codexplusplus install
 ```
 
 GitHub source installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/b-nnett/codex-plusplus/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/main/install.sh | bash
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/b-nnett/codex-plusplus/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/main/install.ps1 | iex
 ```
 
 Bun:
 
 ```sh
-bun install -g github:b-nnett/codex-plusplus
+bun install -g github:kpkhxlgy0/codex-plusplus
 codexplusplus install
 ```
 

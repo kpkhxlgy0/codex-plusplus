@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readdirSync, realpathSync, statSync, cpSync, rmS
 import { execFileSync, spawnSync } from "node:child_process";
 import { homedir, platform } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { FuseV1, readFuses } from "./fuses.js";
 import { readPlist } from "./plist.js";
 
 export type Platform = "darwin" | "win32" | "linux";
@@ -214,14 +215,15 @@ function locateWin(override?: string): CodexInstall {
   }
   const writableAppRoot = isWindowsAppsPath(appRoot) ? ensureWindowsStoreMirror(appRoot) : appRoot;
   const resourcesDir = join(writableAppRoot, "resources");
-  const executable = findWinExecutable(writableAppRoot);
-  const appName = basename(executable, ".exe");
+  const { executable, electronBinary } = resolveWindowsElectronFiles(writableAppRoot);
+  const executableName = basename(executable, ".exe");
+  const appName = executableName === "ChatGPT" ? "Codex" : executableName;
   return {
     appRoot: writableAppRoot,
     resourcesDir,
     asarPath: join(resourcesDir, "app.asar"),
     metaPath: null,
-    electronBinary: executable,
+    electronBinary,
     executable,
     appName,
     bundleId: null,
@@ -304,12 +306,68 @@ function isWinCodexRoot(appRoot: string): boolean {
   return existsSync(join(appRoot, "resources", "app.asar"));
 }
 
-function findWinExecutable(appRoot: string): string {
+function resolveWindowsElectronFiles(appRoot: string): {
+  executable: string;
+  electronBinary: string;
+} {
+  const files = windowsRootFiles(appRoot);
+  const executable = findWinExecutable(appRoot, files);
+  if (!executable) {
+    throw new Error(
+      `[!] Codex Launch Executable Not Found\n\n` +
+        `Codex++ found app.asar but no supported Windows launch executable in ${appRoot}.\n` +
+        `Expected ChatGPT.exe, Codex.exe, or another Codex-named executable.`,
+    );
+  }
+
+  const names = new Map(files.map((name) => [name.toLowerCase(), name]));
+  const carrierNames = unique([
+    names.get("chrome.dll"),
+    basename(executable),
+    names.get("chatgpt.exe"),
+    names.get("codex.exe"),
+  ].filter(Boolean) as string[]);
+  const diagnostics: string[] = [];
+  for (const name of carrierNames) {
+    const candidate = join(appRoot, name);
+    try {
+      const fuses = readFuses(candidate);
+      if (!fuses.fuses[FuseV1.EnableEmbeddedAsarIntegrityValidation]) {
+        throw new Error(
+          `Electron fuse carrier has ${fuses.count} wires; expected the embedded asar integrity fuse wire`,
+        );
+      }
+      return { executable, electronBinary: candidate };
+    } catch (e) {
+      diagnostics.push(`  ${candidate}: ${(e as Error).message}`);
+    }
+  }
+
+  throw new Error(
+    `[!] Valid Electron Fuse Carrier Not Found\n\n` +
+      `Codex++ found app.asar and ${executable}, but none of the supported Electron files had a valid fuse sentinel and wire.\n` +
+      `Checked:\n${diagnostics.length ? diagnostics.join("\n") : "  (no supported fuse carrier candidates existed)"}`,
+  );
+}
+
+function windowsRootFiles(appRoot: string): string[] {
   try {
-    const exe = readdirSync(appRoot).find((name) => /\.exe$/i.test(name) && /\bcodex\b/i.test(name));
-    if (exe) return join(appRoot, exe);
+    return readdirSync(appRoot, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b));
   } catch {}
-  return join(appRoot, "Codex.exe");
+  return [];
+}
+
+function findWinExecutable(appRoot: string, files: string[]): string | null {
+  const names = new Map(files.map((name) => [name.toLowerCase(), name]));
+  const preferred = ["chatgpt.exe", "codex.exe", "codex (beta).exe", "codex beta.exe", "codex-beta.exe"];
+  const named = preferred.map((name) => names.get(name)).find(Boolean);
+  if (named) return join(appRoot, named);
+
+  const compatible = files.find((name) => /\.exe$/i.test(name) && /\bcodex\b/i.test(name));
+  return compatible ? join(appRoot, compatible) : null;
 }
 
 function findWindowsStoreCodexInstalls(): { name: string; installLocation: string | null }[] {

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO="${CODEX_PLUSPLUS_REPO:-b-nnett/codex-plusplus}"
+REPO="${CODEX_PLUSPLUS_REPO:-kpkhxlgy0/codex-plusplus}"
 REF="${CODEX_PLUSPLUS_REF:-main}"
 
 fail() {
