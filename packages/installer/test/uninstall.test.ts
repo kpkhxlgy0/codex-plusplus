@@ -11,7 +11,12 @@ import {
 } from "../src/commands/uninstall";
 import type { CodexInstall } from "../src/platform";
 import type { InstallerState } from "../src/state";
-import { backupFuseCarrier } from "../src/fuse-backup";
+import {
+  backupFuseCarrier,
+  fuseCarrierBackupPath,
+  restoreFuseCarrier,
+} from "../src/fuse-backup";
+import { writeFuse } from "../src/fuses";
 
 test(
   "uninstall explains runtime cleanup permission failures",
@@ -209,6 +214,138 @@ test("install rejects a mismatched generic backup when creating carrier-specific
 
     assert.equal(backupPath, join(backupDir, "electron", "chrome.dll"));
     assert.deepEqual(readFileSync(backupPath), currentCarrier);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("install refreshes a colliding carrier-specific backup across app versions", () => {
+  const root = mkdtempSync(join(tmpdir(), "codexpp-install-fuse-"));
+  try {
+    const backupDir = join(root, "backup");
+    const firstAppRoot = join(root, "Microsoft.Codex_1.0.0.0_x64", "app");
+    const secondAppRoot = join(root, "Microsoft.Codex_2.0.0.0_x64", "app");
+    mkdirSync(firstAppRoot, { recursive: true });
+    mkdirSync(secondAppRoot, { recursive: true });
+    const firstCarrier = join(firstAppRoot, "chrome.dll");
+    const secondCarrier = join(secondAppRoot, "chrome.dll");
+    const legacyBackup = join(backupDir, "Electron Framework");
+    writeFuseCarrier(firstCarrier, "Store carrier version 1", "on");
+    const firstOriginal = readFileSync(firstCarrier);
+
+    const backupPath = backupFuseCarrier(
+      firstAppRoot,
+      firstCarrier,
+      backupDir,
+      legacyBackup,
+    );
+    writeFuse(firstCarrier, "EnableEmbeddedAsarIntegrityValidation", "off");
+
+    writeFuseCarrier(secondCarrier, "Store carrier version 2", "on");
+    const secondOriginal = readFileSync(secondCarrier);
+    const collidingBackupPath = backupFuseCarrier(
+      secondAppRoot,
+      secondCarrier,
+      backupDir,
+      legacyBackup,
+    );
+
+    assert.equal(collidingBackupPath, backupPath);
+    assert.notDeepEqual(secondOriginal, firstOriginal);
+    assert.deepEqual(readFileSync(backupPath), secondOriginal);
+
+    writeFuse(secondCarrier, "EnableEmbeddedAsarIntegrityValidation", "off");
+    const restored = restoreFuseCarrier({
+      appRoot: secondAppRoot,
+      electronBinary: secondCarrier,
+      backupRoot: backupDir,
+      legacyBackupPath: legacyBackup,
+      installedCarrierIdentity: "chrome.dll",
+      fuseFlipped: true,
+    });
+
+    assert.equal(restored.restored, true);
+    assert.deepEqual(readFileSync(secondCarrier), secondOriginal);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("install reuses a matching carrier-specific backup", () => {
+  const root = mkdtempSync(join(tmpdir(), "codexpp-install-fuse-"));
+  try {
+    const appRoot = join(root, "app");
+    const backupDir = join(root, "backup");
+    mkdirSync(appRoot, { recursive: true });
+    const carrier = join(appRoot, "chrome.dll");
+    const legacyBackup = join(backupDir, "Electron Framework");
+    writeFuseCarrier(carrier, "matching carrier", "on");
+    const original = readFileSync(carrier);
+    const backupPath = backupFuseCarrier(appRoot, carrier, backupDir, legacyBackup);
+    writeFuse(carrier, "EnableEmbeddedAsarIntegrityValidation", "off");
+
+    backupFuseCarrier(appRoot, carrier, backupDir, legacyBackup);
+
+    assert.deepEqual(readFileSync(backupPath), original);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("uninstall does not apply the legacy Electron Framework exception to carrier-specific backups", () => {
+  const root = mkdtempSync(join(tmpdir(), "codexpp-uninstall-fuse-"));
+  try {
+    const appRoot = join(root, "Codex.app");
+    const backupDir = join(root, "backup");
+    const carrier = join(appRoot, "Electron Framework");
+    const backupPath = fuseCarrierBackupPath(appRoot, carrier, backupDir);
+    mkdirSync(appRoot, { recursive: true });
+    mkdirSync(join(backupDir, "electron"), { recursive: true });
+    writeFuseCarrier(carrier, "current macOS carrier", "off");
+    writeFuseCarrier(backupPath, "stale macOS carrier", "on");
+    const current = readFileSync(carrier);
+
+    const restored = restoreFuseCarrier({
+      appRoot,
+      electronBinary: carrier,
+      backupRoot: backupDir,
+      legacyBackupPath: join(backupDir, "Electron Framework"),
+      installedCarrierIdentity: "Electron Framework",
+      fuseFlipped: true,
+    });
+
+    assert.equal(restored.restored, false);
+    assert.match(restored.reason ?? "", /carrier-specific backup does not match/);
+    assert.deepEqual(readFileSync(carrier), current);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("uninstall retains the generic Electron Framework compatibility fallback", () => {
+  const root = mkdtempSync(join(tmpdir(), "codexpp-uninstall-fuse-"));
+  try {
+    const appRoot = join(root, "Codex.app");
+    const backupDir = join(root, "backup");
+    const carrier = join(appRoot, "Electron Framework");
+    const legacyBackup = join(backupDir, "Electron Framework");
+    mkdirSync(appRoot, { recursive: true });
+    mkdirSync(backupDir, { recursive: true });
+    writeFuseCarrier(carrier, "current macOS carrier", "off");
+    writeFuseCarrier(legacyBackup, "historical macOS carrier", "on");
+    const legacy = readFileSync(legacyBackup);
+
+    const restored = restoreFuseCarrier({
+      appRoot,
+      electronBinary: carrier,
+      backupRoot: backupDir,
+      legacyBackupPath: legacyBackup,
+      installedCarrierIdentity: "Electron Framework",
+      fuseFlipped: true,
+    });
+
+    assert.equal(restored.restored, true);
+    assert.deepEqual(readFileSync(carrier), legacy);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

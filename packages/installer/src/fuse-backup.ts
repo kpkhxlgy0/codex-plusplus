@@ -32,12 +32,21 @@ export function backupFuseCarrier(
   legacyBackupPath: string,
 ): string {
   const backupPath = fuseCarrierBackupPath(appRoot, electronBinary, backupRoot);
-  if (existsSync(backupPath)) return backupPath;
+  if (
+    existsSync(backupPath) &&
+    fuseBackupMatchesCurrentCarrier(backupPath, electronBinary, {
+      allowLegacyElectronFrameworkName: false,
+    })
+  ) {
+    return backupPath;
+  }
 
   mkdirSync(dirname(backupPath), { recursive: true });
   if (
     existsSync(legacyBackupPath) &&
-    legacyBackupMatchesCurrentCarrier(legacyBackupPath, electronBinary)
+    fuseBackupMatchesCurrentCarrier(legacyBackupPath, electronBinary, {
+      allowLegacyElectronFrameworkName: true,
+    })
   ) {
     cpSync(legacyBackupPath, backupPath);
   } else {
@@ -82,6 +91,18 @@ export function restoreFuseCarrier(input: {
     input.backupRoot,
   );
   if (existsSync(carrierBackup)) {
+    if (
+      !fuseBackupMatchesCurrentCarrier(carrierBackup, input.electronBinary, {
+        allowLegacyElectronFrameworkName: false,
+      })
+    ) {
+      return {
+        restored: false,
+        reason:
+          `carrier-specific backup does not match the current fuse carrier ` +
+          `(${basename(input.electronBinary)})`,
+      };
+    }
     cpSync(carrierBackup, input.electronBinary);
     return { restored: true, backupPath: carrierBackup };
   }
@@ -90,7 +111,11 @@ export function restoreFuseCarrier(input: {
     return { restored: false, reason: "no Electron fuse backup exists" };
   }
 
-  if (!legacyBackupMatchesCurrentCarrier(input.legacyBackupPath, input.electronBinary)) {
+  if (
+    !fuseBackupMatchesCurrentCarrier(input.legacyBackupPath, input.electronBinary, {
+      allowLegacyElectronFrameworkName: true,
+    })
+  ) {
     return {
       restored: false,
       reason:
@@ -111,21 +136,27 @@ function sameCarrierIdentity(left: string, right: string): boolean {
     : normalizedLeft === normalizedRight;
 }
 
-function legacyBackupMatchesCurrentCarrier(
-  legacyBackupPath: string,
+function fuseBackupMatchesCurrentCarrier(
+  backupPath: string,
   electronBinary: string,
+  options: { allowLegacyElectronFrameworkName: boolean },
 ): boolean {
-  if (basename(electronBinary) === "Electron Framework") return true;
+  if (
+    options.allowLegacyElectronFrameworkName &&
+    basename(electronBinary) === "Electron Framework"
+  ) {
+    return true;
+  }
 
   try {
-    const backupFuses = readFuses(legacyBackupPath);
+    const backupFuses = readFuses(backupPath);
     const currentFuses = readFuses(electronBinary);
     const fuseIndex = FuseV1.EnableEmbeddedAsarIntegrityValidation;
     if (fuseIndex >= backupFuses.count || fuseIndex >= currentFuses.count) return false;
     if (backupFuses.schemaVersion !== currentFuses.schemaVersion) return false;
     if (backupFuses.count !== currentFuses.count || backupFuses.offset !== currentFuses.offset) return false;
 
-    const backup = readFileSync(legacyBackupPath);
+    const backup = readFileSync(backupPath);
     const current = readFileSync(electronBinary);
     if (backup.length !== current.length) return false;
     const fuseOffset = backupFuses.offset + fuseIndex;
