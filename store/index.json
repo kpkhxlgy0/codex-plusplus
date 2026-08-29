@@ -1,13 +1,39 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-07T10:58:40.205Z",
+  "generatedAt": "2026-05-12T10:41:53.305Z",
   "entries": [
+    {
+      "id": "co.sakushi.add-project-by-path",
+      "manifest": {
+        "id": "co.sakushi.add-project-by-path",
+        "name": "Add Project by Path",
+        "version": "0.1.0",
+        "githubRepo": "ImSakushi/codex-plusplus-add-project-path",
+        "description": "Adds a native-looking project menu action for adding a workspace by typing its path.",
+        "author": {
+          "name": "Adrien Devoe"
+        },
+        "tags": [
+          "project",
+          "workspace",
+          "ui"
+        ],
+        "scope": "both",
+        "main": "index.cjs",
+        "iconUrl": "https://raw.githubusercontent.com/ImSakushi/codex-plusplus-add-project-path/main/icon.png"
+      },
+      "repo": "ImSakushi/codex-plusplus-add-project-path",
+      "approvedCommitSha": "aef5ebff965cb3c95df2a82f3f087b161e36c2ec",
+      "approvedAt": "2026-05-12T10:41:53.305Z",
+      "approvedBy": "bennett",
+      "reviewUrl": "https://github.com/b-nnett/codex-plusplus/issues/86"
+    },
     {
       "id": "co.bennett.ui-improvements",
       "manifest": {
         "id": "co.bennett.ui-improvements",
         "name": "Bennett's UI Improvements",
-        "version": "0.1.6",
+        "version": "1.0.3",
         "githubRepo": "b-nnett/codex-plusplus-bennett-ui",
         "description": "Quality-of-life UI tweaks for Codex: hide upgrade prompts, surface usage and message metrics.",
         "author": {
@@ -24,8 +50,8 @@
         "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/ui-improvements.png"
       },
       "repo": "b-nnett/codex-plusplus-bennett-ui",
-      "approvedCommitSha": "cc34f6d1dc6e8f624ee4d0152938efccca268d4a",
-      "approvedAt": "2026-05-07T10:50:41Z",
+      "approvedCommitSha": "17156ac0cc3402284b09c13c74754eda70388f50",
+      "approvedAt": "2026-05-08T15:33:36Z",
       "approvedBy": "bennett"
     },
     {
@@ -86,6 +112,33 @@
       "approvedBy": "bennett"
     },
     {
+      "id": "co.bennett.codex-horizontal-tabs",
+      "manifest": {
+        "id": "co.bennett.codex-horizontal-tabs",
+        "name": "Codex Horizontal Tabs",
+        "version": "1.0.1",
+        "githubRepo": "b-nnett/codexplusplus-horizontal-tabs",
+        "description": "Adds a Chrome-like top tab bar for open Codex chats.",
+        "author": {
+          "name": "bennett",
+          "url": "https://github.com/b-nnett"
+        },
+        "homepage": "https://github.com/b-nnett/codexplusplus-horizontal-tabs",
+        "tags": [
+          "ui",
+          "tabs",
+          "productivity"
+        ],
+        "scope": "both",
+        "main": "index.js",
+        "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/tabs.png"
+      },
+      "repo": "b-nnett/codexplusplus-horizontal-tabs",
+      "approvedCommitSha": "1bfba0e9aeae552308c0249fb9f87d29c9c51354",
+      "approvedAt": "2026-05-08T16:24:59Z",
+      "approvedBy": "bennett"
+    },
+    {
       "id": "co.bennett.codex-tab-switcher",
       "manifest": {
         "id": "co.bennett.codex-tab-switcher",
@@ -111,6 +164,32 @@
       "approvedCommitSha": "97b1226fb264dfebe7dbf5286497b99613981287",
       "approvedAt": "2026-04-29T12:30:38+09:00",
       "approvedBy": "bennett"
+    },
+    {
+      "id": "com.jumang.completion-sound",
+      "manifest": {
+        "id": "com.jumang.completion-sound",
+        "name": "Completion Sound",
+        "version": "0.1.13",
+        "githubRepo": "jumang4423/codex-completion-sound",
+        "description": "Plays Codex activity sounds and widens the chat column.",
+        "author": {
+          "name": "jumang4423"
+        },
+        "tags": [
+          "notification",
+          "sound",
+          "productivity"
+        ],
+        "scope": "both",
+        "main": "index.js",
+        "minRuntime": "0.1.1"
+      },
+      "repo": "jumang4423/codex-completion-sound",
+      "approvedCommitSha": "d1447aab3835020e6dd9362e661a5d12579377f2",
+      "approvedAt": "2026-05-12T10:32:31.978Z",
+      "approvedBy": "bennett",
+      "reviewUrl": "https://github.com/b-nnett/codex-plusplus/issues/30"
     },
     {
       "id": "co.Arconte112.followup",
@@ -282,7 +361,7 @@
       "manifest": {
         "id": "co.bennett.ios-simulator",
         "name": "iOS Simulator",
-        "version": "1.0.0",
+        "version": "2.0.1",
         "githubRepo": "b-nnett/codex-plusplus-ios-simulator",
         "description": "Adds an iOS Simulator tab to Codex's right panel. Mirrors the booted simulator headlessly via CoreSimulator IOSurface and forwards taps/swipes through SimulatorKit's HID client.",
         "author": {
@@ -299,9 +378,70 @@
         "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/ios-simulator.png"
       },
       "repo": "b-nnett/codex-plusplus-ios-simulator",
-      "approvedCommitSha": "0ec57f6b7f0f1faee7be891e7be06a9682ddcba2",
-      "approvedAt": "2026-04-30T14:22:08+09:00",
+      "approvedCommitSha": "2601adbc6e8faff389d30c7afff6ed2985b36554",
+      "approvedAt": "2026-05-07T19:43:24Z",
       "approvedBy": "bennett"
+    },
+    {
+      "id": "co.bennett.computer-use",
+      "manifest": {
+        "id": "co.bennett.computer-use",
+        "name": "OpenAI Computer Use",
+        "version": "0.4.5",
+        "githubRepo": "TheAndersMadsen/codex-plusplus-computer-use",
+        "description": "Enable OpenAI Computer Use in Codex++ with native-style setup, startup self-healing, and native feature registration.",
+        "author": {
+          "name": "Anders Madsen",
+          "url": "https://github.com/TheAndersMadsen"
+        },
+        "homepage": "https://github.com/TheAndersMadsen/codex-plusplus-computer-use",
+        "tags": [
+          "mcp",
+          "computer-use",
+          "openai",
+          "codex-plusplus"
+        ],
+        "scope": "both",
+        "main": "index.js",
+        "mcp": {
+          "command": "./computer-use-mcp.sh"
+        }
+      },
+      "repo": "TheAndersMadsen/codex-plusplus-computer-use",
+      "approvedCommitSha": "52fe7b4b69854fcdfe34c36089d487329ebb8017",
+      "approvedAt": "2026-05-12T10:32:31.978Z",
+      "approvedBy": "bennett",
+      "reviewUrl": "https://github.com/b-nnett/codex-plusplus/issues/37"
+    },
+    {
+      "id": "me.xtawfik.codex-plusplus-package-run",
+      "manifest": {
+        "id": "me.xtawfik.codex-plusplus-package-run",
+        "name": "Package Run",
+        "version": "0.1.0",
+        "githubRepo": "xtawfik/codex-plusplus-package-run",
+        "description": "Shows package.json scripts inside Codex's native file viewer and sends selected commands to the terminal.",
+        "author": {
+          "name": "Mohamed Tawfik",
+          "url": "https://github.com/xtawfik"
+        },
+        "tags": [
+          "package",
+          "scripts",
+          "terminal"
+        ],
+        "scope": "both",
+        "main": "index.js",
+        "permissions": [
+          "ipc",
+          "filesystem"
+        ]
+      },
+      "repo": "xtawfik/codex-plusplus-package-run",
+      "approvedCommitSha": "f24927c54f2798a3495b659f7488c9be46be237e",
+      "approvedAt": "2026-05-12T10:32:31.978Z",
+      "approvedBy": "bennett",
+      "reviewUrl": "https://github.com/b-nnett/codex-plusplus/issues/65"
     },
     {
       "id": "co.bennett.project-home",
@@ -338,13 +478,38 @@
       "approvedBy": "bennett"
     },
     {
+      "id": "com.imsakushi.quick-actions",
+      "manifest": {
+        "id": "com.imsakushi.quick-actions",
+        "name": "Quick Actions",
+        "version": "0.3.2",
+        "githubRepo": "ImSakushi/codex-plusplus-quick-actions",
+        "description": "Custom workflow actions for Codex's Git panel.",
+        "author": {
+          "name": "ImSakushi"
+        },
+        "tags": [
+          "git",
+          "workflow",
+          "productivity"
+        ],
+        "scope": "renderer",
+        "main": "index.cjs",
+        "iconUrl": "https://raw.githubusercontent.com/ImSakushi/codex-plusplus-quick-actions/main/icon.png"
+      },
+      "repo": "ImSakushi/codex-plusplus-quick-actions",
+      "approvedCommitSha": "625cef651103c478c9ce5a5d9800e86f72c586bf",
+      "approvedAt": "2026-05-12T10:41:53.305Z",
+      "approvedBy": "bennett",
+      "reviewUrl": "https://github.com/b-nnett/codex-plusplus/issues/87"
+    },
+    {
       "id": "co.shivam94.reasoning-fixes",
       "manifest": {
         "id": "co.shivam94.reasoning-fixes",
         "name": "Reasoning & Exploration Fixes",
-        "version": "1.1.0",
-        "githubRepo": "shivam2014/codex-plusplus-reasoning-fixes",
-        "description": "Shows reasoning steps, tool calls, file edits, and exploration activity as standalone chat items, with a floating control to collapse or expand them together.",
+        "version": "1.2.0",
+        "description": "v1.2.0 stable — Keep exploration panels open, reasoning visible, and tool outputs expanded. 14 source patches + 3 runtime features.",
         "author": {
           "name": "shivam94",
           "url": "https://github.com/shivam2014/codex-plusplus-reasoning-fixes"
@@ -353,17 +518,19 @@
           "ui",
           "reasoning",
           "exploration",
-          "tool-output"
+          "accessibility"
         ],
         "scope": "both",
         "main": "index.js",
+        "githubRepo": "shivam2014/codex-plusplus-reasoning-fixes",
         "minRuntime": "0.1.0",
         "iconUrl": "https://kpkhxlgy0.github.io/codex-plusplus/store/icons/thought-fixer.png"
       },
       "repo": "shivam2014/codex-plusplus-reasoning-fixes",
-      "approvedCommitSha": "2766527ef1b159ee29d338fc7475372010ed7f6f",
-      "approvedAt": "2026-05-05T19:19:59Z",
-      "approvedBy": "bennett"
+      "approvedCommitSha": "bcb516e9a3d84e38bb6528ebd9a11d9ab5f722ae",
+      "approvedAt": "2026-05-12T10:37:05.815Z",
+      "approvedBy": "bennett",
+      "reviewUrl": "https://github.com/shivam2014/codex-plusplus-reasoning-fixes/compare/2766527ef1b159ee29d338fc7475372010ed7f6f...bcb516e9a3d84e38bb6528ebd9a11d9ab5f722ae"
     },
     {
       "id": "co.bennett.windows-computer-use",
