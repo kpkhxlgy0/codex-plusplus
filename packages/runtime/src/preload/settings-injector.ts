@@ -1073,7 +1073,7 @@ function updateChannelRow(config: CodexPlusPlusConfig): HTMLElement {
       compactButton("Edit", () => {
         const repo = window.prompt("GitHub repo", config.updateRepo || "kpkhxlgy0/codex-plusplus");
         if (repo === null) return;
-        const ref = window.prompt("Git ref", config.updateRef || "main");
+        const ref = window.prompt("Git ref", config.updateRef || "master");
         if (ref === null) return;
         void ipcRenderer
           .invoke("codexpp:set-update-config", {

@@ -10,4 +10,4 @@ if command -v codex-plusplus >/dev/null 2>&1; then
 fi
 
 echo "[!] codexplusplus is not installed in PATH; running the installer instead." >&2
-exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/main/install.sh)"
+exec bash -c "$(curl -fsSL https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/master/install.sh)"

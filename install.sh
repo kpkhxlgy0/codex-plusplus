@@ -2,7 +2,7 @@
 set -euo pipefail
 
 REPO="${CODEX_PLUSPLUS_REPO:-kpkhxlgy0/codex-plusplus}"
-REF="${CODEX_PLUSPLUS_REF:-main}"
+REF="${CODEX_PLUSPLUS_REF:-master}"
 
 fail() {
   echo "[!] $1" >&2

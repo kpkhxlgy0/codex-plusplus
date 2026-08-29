@@ -9,6 +9,7 @@ import { ensureUserPaths } from "../paths.js";
 import { backupOnce, patchAsar, readFileInAsar, readHeaderHash } from "../asar.js";
 import { setIntegrity } from "../integrity.js";
 import { writeFuse } from "../fuses.js";
+import { backupFuseCarrier, fuseCarrierIdentity } from "../fuse-backup.js";
 import { clearQuarantine, prepareCodeSigning, signCodexApp, signatureInfo } from "../codesign.js";
 import { readPlist } from "../plist.js";
 import { writeState } from "../state.js";
@@ -89,7 +90,7 @@ export async function install(opts: Opts = {}): Promise<void> {
   const backupAsar = join(paths.backup, "app.asar");
   const backupAsarUnpacked = join(paths.backup, "app.asar.unpacked");
   const backupPlist = codex.metaPath ? join(paths.backup, "Info.plist") : null;
-  const backupFramework = join(paths.backup, "Electron Framework");
+  const legacyBackupFramework = join(paths.backup, "Electron Framework");
   let appBackupRefreshed = false;
   if (pristineAppBackup) {
     appBackupRefreshed = backupUnpatchedApp(codex.appRoot, pristineAppBackup, {
@@ -102,7 +103,14 @@ export async function install(opts: Opts = {}): Promise<void> {
     backupOnce(`${codex.asarPath}.unpacked`, backupAsarUnpacked);
   }
   if (codex.metaPath && backupPlist) backupOnce(codex.metaPath, backupPlist);
-  if (fuseFlip) backupOnce(codex.electronBinary, backupFramework);
+  if (fuseFlip) {
+    backupFuseCarrier(
+      codex.appRoot,
+      codex.electronBinary,
+      paths.backup,
+      legacyBackupFramework,
+    );
+  }
   step(appBackupRefreshed ? "Backup refreshed" : "Backup ready");
 
   const { headerHash: originalAsarHash } = readHeaderHash(codex.asarPath);
@@ -185,6 +193,9 @@ export async function install(opts: Opts = {}): Promise<void> {
     codexChannel: codex.channel,
     codexBundleId: codex.bundleId,
     fuseFlipped,
+    electronBinaryPath: fuseFlip
+      ? fuseCarrierIdentity(codex.appRoot, codex.electronBinary)
+      : undefined,
     resigned,
     signingMode,
     signingIdentity,

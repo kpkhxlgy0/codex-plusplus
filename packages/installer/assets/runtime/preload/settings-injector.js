@@ -848,7 +848,7 @@ function updateChannelRow(config) {
             const repo = window.prompt("GitHub repo", config.updateRepo || "kpkhxlgy0/codex-plusplus");
             if (repo === null)
                 return;
-            const ref = window.prompt("Git ref", config.updateRef || "main");
+            const ref = window.prompt("Git ref", config.updateRef || "master");
             if (ref === null)
                 return;
             void electron_1.ipcRenderer

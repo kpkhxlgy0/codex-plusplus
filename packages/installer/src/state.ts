@@ -22,6 +22,8 @@ export interface InstallerState {
   codexBundleId?: string | null;
   /** Whether we flipped the Electron fuse. */
   fuseFlipped: boolean;
+  /** App-root-relative identity of the Electron file whose fuse was flipped. */
+  electronBinaryPath?: string;
   /** Whether we re-signed the patched app. */
   resigned: boolean;
   /** Signing mode used for the patched app. Older installs may not have this. */

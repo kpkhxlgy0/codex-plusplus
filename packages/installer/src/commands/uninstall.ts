@@ -13,6 +13,7 @@ import { readHeaderHash } from "../asar.js";
 import { hasCodexPlusPlusAsarMarker, readCodexVersion } from "./install.js";
 import { isCodexRunning } from "../alerts.js";
 import type { CodexInstall } from "../platform.js";
+import { restoreFuseCarrier } from "../fuse-backup.js";
 
 interface Opts {
   app?: string;
@@ -171,7 +172,7 @@ function restoreFullAppBundle(appRoot: string, backupPath: string): void {
   }
 }
 
-function restorePartialBackup(
+export function restorePartialBackup(
   codex: CodexInstall,
   opts: {
     backupAsar: string;
@@ -205,15 +206,16 @@ function restorePartialBackup(
   if (codex.metaPath && opts.backupPlist && existsSync(opts.backupPlist)) {
     cpSync(opts.backupPlist, codex.metaPath);
   }
-  if (existsSync(opts.backupFramework)) {
-    if (!existsSync(codex.electronBinary)) {
-      throw new Error(
-        `Cannot safely restore Electron Framework backup because the current Codex layout has no Electron Framework at:\n` +
-          `  ${codex.electronBinary}\n\n` +
-          `Use a full Codex.app backup or reinstall Codex from the official app.`,
-      );
-    }
-    cpSync(opts.backupFramework, codex.electronBinary);
+  const fuseRestore = restoreFuseCarrier({
+    appRoot: codex.appRoot,
+    electronBinary: codex.electronBinary,
+    backupRoot: dirname(opts.backupFramework),
+    legacyBackupPath: opts.backupFramework,
+    installedCarrierIdentity: opts.state?.electronBinaryPath,
+    fuseFlipped: opts.state?.fuseFlipped !== false,
+  });
+  if (!fuseRestore.restored && fuseRestore.reason !== "no Electron fuse backup exists") {
+    console.warn(kleur.yellow(`Electron fuse restore skipped: ${fuseRestore.reason}.`));
   }
 
   if (codex.platform === "darwin") {

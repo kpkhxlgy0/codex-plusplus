@@ -11,4 +11,4 @@ if (Get-Command codex-plusplus -ErrorAction SilentlyContinue) {
 }
 
 [Console]::Error.WriteLine("[!] codexplusplus is not installed in PATH; running the installer instead.")
-irm https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/master/install.ps1 | iex

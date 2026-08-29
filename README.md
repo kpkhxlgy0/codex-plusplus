@@ -60,13 +60,13 @@ codexplusplus install
 GitHub source installer:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/master/install.sh | bash
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/master/install.ps1 | iex
 ```
 
 Bun:

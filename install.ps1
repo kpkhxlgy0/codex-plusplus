@@ -1,7 +1,7 @@
 $ErrorActionPreference = "Stop"
 
 $Repo = if ($env:CODEX_PLUSPLUS_REPO) { $env:CODEX_PLUSPLUS_REPO } else { "kpkhxlgy0/codex-plusplus" }
-$Ref = if ($env:CODEX_PLUSPLUS_REF) { $env:CODEX_PLUSPLUS_REF } else { "main" }
+$Ref = if ($env:CODEX_PLUSPLUS_REF) { $env:CODEX_PLUSPLUS_REF } else { "master" }
 $InstallDir = if ($env:CODEX_PLUSPLUS_SOURCE_DIR) { $env:CODEX_PLUSPLUS_SOURCE_DIR } else { Join-Path $HOME ".codex-plusplus\source" }
 
 function Fail($Message) {
