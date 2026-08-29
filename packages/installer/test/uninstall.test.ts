@@ -292,6 +292,37 @@ test("install reuses a matching carrier-specific backup", () => {
   }
 });
 
+test("install refreshes a stale macOS carrier-specific backup without consulting the generic backup", () => {
+  const root = mkdtempSync(join(tmpdir(), "codexpp-install-fuse-"));
+  try {
+    const appRoot = join(root, "Codex.app");
+    const backupDir = join(root, "backup");
+    const carrier = join(appRoot, "Electron Framework");
+    const backupPath = fuseCarrierBackupPath(appRoot, carrier, backupDir);
+    const legacyBackup = join(backupDir, "Electron Framework");
+    mkdirSync(appRoot, { recursive: true });
+    mkdirSync(join(backupDir, "electron"), { recursive: true });
+    writeFuseCarrier(carrier, "current macOS carrier", "on");
+    writeFuseCarrier(backupPath, "stale carrier-specific backup", "on");
+    writeFuseCarrier(legacyBackup, "stale generic backup", "on");
+    const current = readFileSync(carrier);
+    const legacy = readFileSync(legacyBackup);
+
+    const refreshedPath = backupFuseCarrier(
+      appRoot,
+      carrier,
+      backupDir,
+      legacyBackup,
+    );
+
+    assert.equal(refreshedPath, backupPath);
+    assert.notDeepEqual(legacy, current);
+    assert.deepEqual(readFileSync(backupPath), current);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("uninstall does not apply the legacy Electron Framework exception to carrier-specific backups", () => {
   const root = mkdtempSync(join(tmpdir(), "codexpp-uninstall-fuse-"));
   try {

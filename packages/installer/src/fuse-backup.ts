@@ -32,12 +32,13 @@ export function backupFuseCarrier(
   legacyBackupPath: string,
 ): string {
   const backupPath = fuseCarrierBackupPath(appRoot, electronBinary, backupRoot);
-  if (
-    existsSync(backupPath) &&
-    fuseBackupMatchesCurrentCarrier(backupPath, electronBinary, {
+  if (existsSync(backupPath)) {
+    if (fuseBackupMatchesCurrentCarrier(backupPath, electronBinary, {
       allowLegacyElectronFrameworkName: false,
-    })
-  ) {
+    })) {
+      return backupPath;
+    }
+    cpSync(electronBinary, backupPath);
     return backupPath;
   }
 
