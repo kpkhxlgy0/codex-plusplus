@@ -439,7 +439,9 @@ function hasWindowServicesMarker(asarPath: string): boolean {
   try {
     const files = (asar as unknown as { listPackage: (path: string) => string[] }).listPackage(asarPath);
     for (const file of files) {
-      if (!file.startsWith("/.vite/build/") || !file.endsWith(".js")) continue;
+      // ASAR listings use the host platform's path separator.
+      const portablePath = file.replace(/\\/g, "/");
+      if (!portablePath.startsWith("/.vite/build/") || !portablePath.endsWith(".js")) continue;
       const source = asar.extractFile(asarPath, file.slice(1)).toString("utf8");
       if (source.includes("__codexpp_window_services__")) return true;
     }

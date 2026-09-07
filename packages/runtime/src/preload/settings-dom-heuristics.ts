@@ -199,7 +199,6 @@ const FORBIDDEN_SETTINGS_SIDEBAR_SELECTOR = [
   "[data-codexpp-slash-menu='true']",
   "[data-codexpp-overlay-noise='true']",
   ".composer-home-top-menu",
-  ".vertical-scroll-fade-mask",
   "[class*='[container-name:home-main-content]']",
 ].join(",");
 
@@ -213,6 +212,11 @@ export function isForbiddenSettingsSidebarSurface(node: Element | null): boolean
 }
 
 export function isSettingsSidebarCandidate(el: HTMLElement): boolean {
+  // Use the same exclusions when selecting a host and validating injected
+  // groups. Otherwise cleanup removes groups that the next pass reinserts.
+  // The generic vertical-scroll-fade-mask class also appears in Settings;
+  // only the composer/overlay-specific markers above identify forbidden hosts.
+  if (isForbiddenSettingsSidebarSurface(el)) return false;
   const rect = codexPpVisibleBox(el);
   if (!rect) return false;
 

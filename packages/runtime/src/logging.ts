@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { appendFileSync, closeSync, existsSync, openSync, readSync, statSync, writeFileSync } from "node:fs";
 
 export const MAX_LOG_BYTES = 10 * 1024 * 1024;
 
@@ -14,8 +14,22 @@ export function appendCappedLog(path: string, line: string, maxBytes = MAX_LOG_B
       const size = statSync(path).size;
       const allowedExisting = maxBytes - incoming.byteLength;
       if (size > allowedExisting) {
-        const existing = readFileSync(path);
-        writeFileSync(path, existing.subarray(Math.max(0, existing.byteLength - allowedExisting)));
+        // Make room in batches: trimming just enough for one line leaves a
+        // full file, forcing every subsequent line to rewrite the entire log.
+        const keepBytes = Math.max(0, Math.floor(maxBytes / 2) - incoming.byteLength);
+        const tail = Buffer.alloc(keepBytes);
+        const fd = openSync(path, "r");
+        let bytesRead = 0;
+        try {
+          while (bytesRead < keepBytes) {
+            const count = readSync(fd, tail, bytesRead, keepBytes - bytesRead, size - keepBytes + bytesRead);
+            if (count === 0) break;
+            bytesRead += count;
+          }
+        } finally {
+          closeSync(fd);
+        }
+        writeFileSync(path, tail.subarray(0, bytesRead));
       }
     }
   } catch {

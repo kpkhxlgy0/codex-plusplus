@@ -15,8 +15,24 @@ function appendCappedLog(path, line, maxBytes = exports.MAX_LOG_BYTES) {
             const size = (0, node_fs_1.statSync)(path).size;
             const allowedExisting = maxBytes - incoming.byteLength;
             if (size > allowedExisting) {
-                const existing = (0, node_fs_1.readFileSync)(path);
-                (0, node_fs_1.writeFileSync)(path, existing.subarray(Math.max(0, existing.byteLength - allowedExisting)));
+                // Make room in batches: trimming just enough for one line leaves a
+                // full file, forcing every subsequent line to rewrite the entire log.
+                const keepBytes = Math.max(0, Math.floor(maxBytes / 2) - incoming.byteLength);
+                const tail = Buffer.alloc(keepBytes);
+                const fd = (0, node_fs_1.openSync)(path, "r");
+                let bytesRead = 0;
+                try {
+                    while (bytesRead < keepBytes) {
+                        const count = (0, node_fs_1.readSync)(fd, tail, bytesRead, keepBytes - bytesRead, size - keepBytes + bytesRead);
+                        if (count === 0)
+                            break;
+                        bytesRead += count;
+                    }
+                }
+                finally {
+                    (0, node_fs_1.closeSync)(fd);
+                }
+                (0, node_fs_1.writeFileSync)(path, tail.subarray(0, bytesRead));
             }
         }
     }

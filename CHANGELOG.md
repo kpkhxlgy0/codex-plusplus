@@ -4,6 +4,21 @@ All notable changes to codex-plusplus are documented here.
 
 This project uses semver for the installer, runtime, SDK, and published CLI package. Tweak authors should also use semver release tags so the manager can compare installed and available versions.
 
+## 1.0.3
+
+Release notes: [docs/releases/1.0.3.md](docs/releases/1.0.3.md)
+
+### Fixed
+
+- Stopped Settings navigation from repeatedly removing and reinserting Codex++ groups in native fade-mask scrollers. Sidebar selection and cleanup now share the same overlay exclusions.
+- Removed file-sized I/O amplification after runtime logs reach their 10 MiB cap. Trimming retains a bounded tail and leaves room for subsequent appends.
+- Fixed Windows ASAR path handling in bridge diagnostics and corrected Windows compatibility in the MCP path and Linux executable-mode tests.
+
+### Tests
+
+- Added DOM and MutationObserver regressions for stable navigation, genuine sidebar remounts, and composer overlay exclusion.
+- Added log retention and byte-I/O regressions for repeated appends to a full log.
+
 ## 0.1.7
 
 Release notes: [docs/releases/0.1.7.md](docs/releases/0.1.7.md)

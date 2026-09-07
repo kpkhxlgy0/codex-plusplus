@@ -124,11 +124,13 @@ interface FakeElementOptions {
   visibility?: string;
 }
 
+class FakeHTMLElement {}
+
 function fakeElement(options: FakeElementOptions = {}): HTMLElement {
   const children = options.children ?? [];
   const controls = options.controls ?? [];
   const classes = new Set(options.classes ?? []);
-  return {
+  return Object.assign(new FakeHTMLElement(), {
     isConnected: true,
     textContent: options.textContent ?? "",
     dataset: options.dataset ?? {},
@@ -137,6 +139,8 @@ function fakeElement(options: FakeElementOptions = {}): HTMLElement {
       contains: (name: string) => classes.has(name),
     },
     getAttribute: () => null,
+    closest: () => null,
+    querySelector: () => null,
     querySelectorAll: (selector: string) => {
       if (selector === "div,span") return children;
       if (selector === "button,a,[role='button'],[role='link']") return controls;
@@ -151,7 +155,7 @@ function fakeElement(options: FakeElementOptions = {}): HTMLElement {
       display: options.display ?? "block",
       visibility: options.visibility ?? "visible",
     },
-  } as unknown as HTMLElement;
+  }) as unknown as HTMLElement;
 }
 
 function control(label: string): HTMLElement {
@@ -164,6 +168,8 @@ function control(label: string): HTMLElement {
 function withDomGlobals(fn: () => void): void {
   const prevWindow = (globalThis as unknown as { window?: unknown }).window;
   const prevGetComputedStyle = (globalThis as unknown as { getComputedStyle?: unknown }).getComputedStyle;
+  const prevHTMLElement = (globalThis as unknown as { HTMLElement?: unknown }).HTMLElement;
+  (globalThis as unknown as { HTMLElement: unknown }).HTMLElement = FakeHTMLElement;
   (globalThis as unknown as { window: { innerWidth: number } }).window = { innerWidth: 1200 };
   (globalThis as unknown as { getComputedStyle: (el: unknown) => { display: string; visibility: string } })
     .getComputedStyle = (el: unknown) => {
@@ -175,5 +181,6 @@ function withDomGlobals(fn: () => void): void {
   } finally {
     (globalThis as unknown as { window?: unknown }).window = prevWindow;
     (globalThis as unknown as { getComputedStyle?: unknown }).getComputedStyle = prevGetComputedStyle;
+    (globalThis as unknown as { HTMLElement?: unknown }).HTMLElement = prevHTMLElement;
   }
 }

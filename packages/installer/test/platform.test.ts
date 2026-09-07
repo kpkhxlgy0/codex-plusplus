@@ -110,7 +110,8 @@ test("locateCodex rejects unsupported Windows layouts without scanning arbitrary
   });
 });
 
-test("resolveLinuxInstall supports am-will codex-app install directory", () => {
+// Windows cannot create the POSIX executable-mode fixture this test needs.
+test("resolveLinuxInstall supports am-will codex-app install directory", { skip: process.platform === "win32" }, () => {
   const root = mkdtempSync(join(tmpdir(), "codexpp-platform-"));
   try {
     const app = join(root, "codex-desktop");

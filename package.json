@@ -1,7 +1,7 @@
 {
   "name": "codex-plusplus",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "license": "MIT",
   "description": "Tweak system for the OpenAI Codex desktop app",
   "type": "module",
@@ -25,6 +25,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "jsdom": "^26.1.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0"
   },
