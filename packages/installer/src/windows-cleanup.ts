@@ -1,6 +1,8 @@
 import { execFileSync } from "node:child_process";
 import { homedir, platform } from "node:os";
 import { join } from "node:path";
+import { userPaths } from "./paths.js";
+import { WINDOWS_MANAGED_LAUNCHER } from "./windows-launcher.js";
 
 export const WINDOWS_CODEX_CONTEXT_MENU_KEYS = [
   "HKCU:\\Software\\Classes\\Directory\\shell\\OpenProjectInCodex",
@@ -21,6 +23,7 @@ export function cleanupWindowsManagedArtifacts(): void {
     localAppData: process.env.LOCALAPPDATA,
     appData: process.env.APPDATA,
     home: homedir(),
+    launcherPath: join(userPaths().binDir, WINDOWS_MANAGED_LAUNCHER),
   });
 
   try {
@@ -39,8 +42,10 @@ export function buildWindowsManagedCleanupScript(input: {
   localAppData?: string;
   appData?: string;
   home: string;
+  launcherPath?: string;
 }): string {
   const cleanupPaths = [
+    input.launcherPath ?? (input.appData ? join(input.appData, "codex-plusplus", "bin", WINDOWS_MANAGED_LAUNCHER) : null),
     input.localAppData ? join(input.localAppData, "Microsoft", "WindowsApps", "codex-plusplus-codex.cmd") : null,
     input.localAppData ? join(input.localAppData, "codex-plusplus", "store-apps") : null,
     input.appData ? join(input.appData, "codex-plusplus", "bin", "watcher.cmd") : null,

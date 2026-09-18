@@ -181,6 +181,17 @@ On Windows Store installs, Codex++ also creates a writable managed app copy
 under `%LOCALAPPDATA%/codex-plusplus/store-apps/`. Use the Codex++ shortcut for
 that copy.
 
+The Windows launcher reads the current install state and starts the mirror with
+the matching installed package identity. `install` and `repair` refresh the
+launcher, command shim, and shortcuts, including when the app patch is already
+intact. After a Store update, close ChatGPT and run `codexplusplus repair` to
+patch the newly registered version. A missing or mismatched package stops the
+launch; details are written to `log/packaged-launcher.log` in the user-data directory.
+This compatibility path uses Windows `Invoke-CommandInDesktopPackage`, a
+[diagnostic API](https://learn.microsoft.com/en-us/powershell/module/appx/invoke-commandindesktoppackage)
+whose behavior beyond package identity and virtualized-resource access is not
+guaranteed. The original Store installation must remain registered.
+
 ## Writing Tweaks
 
 A tweak is a folder with a manifest and an entry file:

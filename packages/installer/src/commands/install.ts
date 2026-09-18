@@ -1,7 +1,6 @@
 import kleur from "kleur";
 import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, readFileSync, writeFileSync, mkdirSync, openSync, closeSync, unlinkSync, readdirSync, rmSync, copyFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { locateCodex, type CodexInstall } from "../platform.js";
@@ -26,6 +25,7 @@ import {
 import { chownForTargetUser } from "../ownership.js";
 import { getOpenReport, type OpenReport } from "./debug.js";
 import { openCodex, quitCodex } from "../alerts.js";
+import { installWindowsManagedAppLauncher } from "../windows-launcher.js";
 
 interface Opts {
   app?: string;
@@ -668,71 +668,6 @@ function formatRelatedPids(pids: number[]): string {
 
 function preflightAppClosed(codex: CodexInstall, step: (msg: string) => void): boolean {
   return prepareCodexForPatching(codex, { step });
-}
-
-function escapePowerShellSingleQuotedString(value: string): string {
-  return value.replace(/'/g, "''");
-}
-
-function installWindowsManagedAppLauncher(codex: CodexInstall): { shortcutPaths: string[] } | null {
-  if (codex.platform !== "win32") return null;
-  if (!/\\codex-plusplus\\store-apps\\/i.test(`${codex.appRoot.replace(/\//g, "\\")}\\`)) {
-    return null;
-  }
-
-  const localAppData = process.env.LOCALAPPDATA;
-  if (!localAppData) return null;
-
-  const shimDir = join(localAppData, "Microsoft", "WindowsApps");
-  mkdirSync(shimDir, { recursive: true });
-  const commandPath = join(shimDir, "codex-plusplus-codex.cmd");
-  writeFileSync(
-    commandPath,
-    `@echo off\r\nstart "" "${codex.executable}" %*\r\n`,
-    "utf8",
-  );
-  const shortcutPaths = [commandPath];
-
-  const startMenuRoot = process.env.APPDATA
-    ? join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs")
-    : null;
-  if (!startMenuRoot) return { shortcutPaths };
-
-  const startMenuShortcut = join(startMenuRoot, "Codex++.lnk");
-  if (createWindowsCodexShortcut(startMenuShortcut, codex.executable)) {
-    shortcutPaths.push(startMenuShortcut);
-  }
-  const desktopShortcut = join(homedir(), "Desktop", "Codex++.lnk");
-  if (createWindowsCodexShortcut(desktopShortcut, codex.executable)) {
-    shortcutPaths.push(desktopShortcut);
-  }
-
-  return { shortcutPaths };
-}
-
-function createWindowsCodexShortcut(shortcutPath: string, targetPath: string): boolean {
-  try {
-    mkdirSync(dirname(shortcutPath), { recursive: true });
-    const script = [
-      `$shortcutPath = '${escapePowerShellSingleQuotedString(shortcutPath)}'`,
-      `$targetPath = '${escapePowerShellSingleQuotedString(targetPath)}'`,
-      `$workingDirectory = '${escapePowerShellSingleQuotedString(dirname(targetPath))}'`,
-      "$shell = New-Object -ComObject WScript.Shell",
-      "$shortcut = $shell.CreateShortcut($shortcutPath)",
-      "$shortcut.TargetPath = $targetPath",
-      "$shortcut.WorkingDirectory = $workingDirectory",
-      "$shortcut.IconLocation = \"$targetPath,0\"",
-      "$shortcut.Save()",
-    ].join("; ");
-    execFileSync(
-      "powershell.exe",
-      ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-      { stdio: "ignore" },
-    );
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function preflightSystemTools(platform: string, resign: boolean, hasPlist: boolean): void {

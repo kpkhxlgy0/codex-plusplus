@@ -1,9 +1,10 @@
 import { existsSync, mkdirSync, readdirSync, realpathSync, statSync, cpSync, rmSync } from "node:fs";
 import { execFileSync, spawnSync } from "node:child_process";
 import { homedir, platform } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve, win32 } from "node:path";
 import { FuseV1, readFuses } from "./fuses.js";
 import { readPlist } from "./plist.js";
+import { windowsStoreMirrorPackage } from "./windows-launcher.js";
 
 export type Platform = "darwin" | "win32" | "linux";
 export type CodexChannel = "stable" | "beta" | "unknown";
@@ -368,6 +369,27 @@ function findWinExecutable(appRoot: string, files: string[]): string | null {
 
   const compatible = files.find((name) => /\.exe$/i.test(name) && /\bcodex\b/i.test(name));
   return compatible ? join(appRoot, compatible) : null;
+}
+
+export function resolveWindowsStoreRepairRoot(
+  appRoot: string,
+  stores?: { name: string; installLocation: string | null }[],
+): string {
+  const oldPackage = windowsStoreMirrorPackage(appRoot);
+  if (!oldPackage) return appRoot;
+  const identity = oldPackage.split("_");
+  if (identity.length !== 5) throw new Error(`Invalid Store mirror package: ${oldPackage}`);
+  const matches = (stores ?? findWindowsStoreCodexInstalls())
+    .filter((store) => {
+      if (!store.installLocation) return false;
+      const candidate = win32.basename(store.installLocation).split("_");
+      return candidate.length === 5 && candidate[0] === identity[0] &&
+        candidate[2] === identity[2] && candidate[3] === identity[3] && candidate[4] === identity[4];
+    })
+    .sort((a, b) => b.installLocation!.localeCompare(a.installLocation!, undefined, { numeric: true }));
+  const current = matches[0]?.installLocation;
+  if (!current) throw new Error(`The Store package for ${oldPackage} is not installed. Install ChatGPT, then retry repair.`);
+  return win32.basename(current) === oldPackage ? appRoot : win32.join(current, "app");
 }
 
 function findWindowsStoreCodexInstalls(): { name: string; installLocation: string | null }[] {

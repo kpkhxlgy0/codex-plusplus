@@ -4,6 +4,20 @@ All notable changes to codex-plusplus are documented here.
 
 This project uses semver for the installer, runtime, SDK, and published CLI package. Tweak authors should also use semver release tags so the manager can compare installed and available versions.
 
+## 1.0.4
+
+Release notes: [docs/releases/1.0.4.md](docs/releases/1.0.4.md)
+
+### Fixed
+
+- Launch Windows Store mirrors with the matching registered package identity, fixing ChatGPT startup failures after updates.
+- Refresh managed launchers even when repair finds an intact patch, and resolve the current Store version within the same package family.
+- Preserve launch arguments, scope PowerShell execution-policy bypass to the child process, tolerate inaccessible Desktop shortcuts, and clean up the launcher on uninstall.
+
+### Tests
+
+- Added Windows installer and launcher regressions for repeatability, exact package matching, argument forwarding, execution policy, stale state, and Store updates.
+
 ## 1.0.3
 
 Release notes: [docs/releases/1.0.3.md](docs/releases/1.0.3.md)

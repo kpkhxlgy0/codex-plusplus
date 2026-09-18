@@ -6,6 +6,7 @@ import { readPlist } from "./plist.js";
 import { CODEX_PLUSPLUS_VERSION } from "./version.js";
 import { locateCodex } from "./platform.js";
 import { getOpenReport, type OpenReport } from "./commands/debug.js";
+import { windowsManagedLaunchCommand } from "./windows-launcher.js";
 
 const CODEX_BUNDLE_ID = "com.openai.codex";
 const CODEX_PLUSPLUS_REPO_URL = "https://github.com/kpkhxlgy0/codex-plusplus";
@@ -132,6 +133,13 @@ interface OpenCodexOptions {
 }
 
 export function openCodex(appRoot: string, opts: OpenCodexOptions = {}): void {
+  if (platform() === "win32") {
+    const launch = windowsManagedLaunchCommand(appRoot);
+    if (launch) {
+      execFileSync(launch.command, launch.args, { stdio: "pipe", windowsHide: true });
+    }
+    return;
+  }
   if (platform() !== "darwin") return;
   const bundleId = codexBundleId(appRoot);
   if (opts.detached) {

@@ -6,7 +6,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import { install, readCodexVersion, stageAssets } from "./install.js";
 import { ensureUserPaths } from "../paths.js";
 import { readState, writeState } from "../state.js";
-import { locateCodex } from "../platform.js";
+import { locateCodex, resolveWindowsStoreRepairRoot } from "../platform.js";
 import { readHeaderHash } from "../asar.js";
 import { CODEX_PLUSPLUS_VERSION, compareSemver } from "../version.js";
 import { installWatcher } from "../watcher.js";
@@ -23,6 +23,7 @@ import {
   showUpdateModePausedAlert,
 } from "../alerts.js";
 import { fileURLToPath } from "node:url";
+import { installWindowsManagedAppLauncher } from "../windows-launcher.js";
 
 interface Opts {
   app?: string;
@@ -52,6 +53,8 @@ const WATCHER_RETRY_NOTICE_MS = 30_000;
 export async function repair(opts: Opts = {}): Promise<void> {
   const paths = ensureUserPaths();
   const state = readState(paths.stateFile);
+  const appOverride = opts.app ?? (state && platform() === "win32"
+    ? resolveWindowsStoreRepairRoot(state.appRoot) : state?.appRoot);
   if (!state) {
     if (!opts.quiet) {
       console.warn(
@@ -63,12 +66,12 @@ export async function repair(opts: Opts = {}): Promise<void> {
   let settledBeforeHashCheck = false;
   if (state && !opts.force) {
     if (shouldShowUpdateUi(opts)) {
-      announceCodexUpdateDetected(paths.updateModeFile, opts.app ?? state.appRoot);
-      notifyUpdateModePaused(paths.updateModeFile, opts.app ?? state.appRoot);
+      announceCodexUpdateDetected(paths.updateModeFile, appOverride!);
+      notifyUpdateModePaused(paths.updateModeFile, appOverride!);
     }
-    await waitForMacAppUpdateToSettle(opts.app ?? state.appRoot, settleOptions(opts, paths.updateModeFile));
+    await waitForMacAppUpdateToSettle(appOverride, settleOptions(opts, paths.updateModeFile));
     settledBeforeHashCheck = true;
-    const codex = locateCodex(opts.app ?? state.appRoot);
+    const codex = locateCodex(appOverride);
     const updateMode = readUpdateMode(paths.updateModeFile);
     if (updateMode) {
       const codexVersion = readCodexVersion(codex.metaPath);
@@ -94,6 +97,7 @@ export async function repair(opts: Opts = {}): Promise<void> {
     }
     const { headerHash } = readHeaderHash(codex.asarPath);
     if (headerHash === state.patchedAsarHash) {
+      installWindowsManagedAppLauncher(codex);
       const watcher = refreshWatcher(state.watcher, codex.appRoot, opts.quiet);
       if (opts.runtime) {
         stageAssets(paths.runtime);
@@ -142,14 +146,14 @@ export async function repair(opts: Opts = {}): Promise<void> {
   }
 
   if (!settledBeforeHashCheck) {
-    await waitForMacAppUpdateToSettle(opts.app ?? state?.appRoot, settleOptions(opts, paths.updateModeFile));
+    await waitForMacAppUpdateToSettle(appOverride, settleOptions(opts, paths.updateModeFile));
   }
 
   let codexWasRunning = false;
   let repairedAppRoot: string | null = null;
   let reopenAfterRepair = false;
   try {
-    const codex = locateCodex(opts.app ?? state?.appRoot);
+    const codex = locateCodex(appOverride);
     repairedAppRoot = codex.appRoot;
     codexWasRunning = isCodexRunning(codex.appRoot);
     if (codexWasRunning && process.platform === "darwin" && isWatcherRepair(opts)) {
@@ -170,7 +174,7 @@ export async function repair(opts: Opts = {}): Promise<void> {
   }
 
   await install({
-    app: opts.app ?? state?.appRoot,
+    app: appOverride,
     fuse: state?.fuseFlipped ?? true,
     resign: state?.resigned ?? true,
     localSigning: opts.localSigning === true,
