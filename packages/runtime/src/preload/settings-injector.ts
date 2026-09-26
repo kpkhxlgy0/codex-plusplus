@@ -439,6 +439,14 @@ function tryInject(): void {
   if (state.activePage && (state.sidebarRoot !== outer || state.contentHost !== findContentArea())) {
     restoreCodexView();
   }
+  if (state.activePage && state.contentHost) {
+    if (state.panelHost?.parentElement !== state.contentHost) {
+      plog("active panel removed; restoring native settings");
+      restoreCodexView();
+    } else {
+      hideNativeContentChildren(state.contentHost);
+    }
+  }
   state.sidebarRoot = outer;
   removeSettingsGroupsOutsideRoot(outer);
   syncNativeSettingsHeader(itemsGroup, outer);
@@ -464,10 +472,7 @@ function tryInject(): void {
     plog("sidebar re-mount detected; clearing stale active state", {
       prevActive: state.activePage,
     });
-    state.activePage = null;
-    state.panelHost = null;
-    state.contentHost = null;
-    state.hiddenContent.clear();
+    restoreCodexView();
   }
 
   const existingCodexPpNavGroup =
@@ -870,11 +875,7 @@ function activatePage(page: ActivePage): void {
   plog("activate", { page });
 
   // Hide Codex's content children, show ours.
-  for (const child of Array.from(content.children) as HTMLElement[]) {
-    if (child.dataset.codexpp === "tweaks-panel") continue;
-    if (!state.hiddenContent.has(child)) state.hiddenContent.set(child, child.style.display);
-    child.style.display = "none";
-  }
+  hideNativeContentChildren(content);
   let panel = content.querySelector<HTMLElement>('[data-codexpp="tweaks-panel"]');
   if (!panel) {
     panel = document.createElement("div");
@@ -902,6 +903,14 @@ function activatePage(page: ActivePage): void {
     };
     state.sidebarRestoreHandler = handler;
     sidebar.addEventListener("click", handler, true);
+  }
+}
+
+function hideNativeContentChildren(content: HTMLElement): void {
+  for (const child of Array.from(content.children) as HTMLElement[]) {
+    if (child.dataset.codexpp === "tweaks-panel") continue;
+    if (!state.hiddenContent.has(child)) state.hiddenContent.set(child, child.style.display);
+    if (child.style.display !== "none") child.style.display = "none";
   }
 }
 

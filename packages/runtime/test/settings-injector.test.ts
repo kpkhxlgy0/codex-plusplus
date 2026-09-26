@@ -353,6 +353,84 @@ test("replacing the native content host restores the old display and allows one 
   }
 });
 
+test("native children added or replaced in an active host stay hidden and recover their display", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    let renders = 0;
+    f.injector.registerPage("test", { id: "test", name: "Test", version: "1.0.0" }, {
+      id: "test:page", title: "Test page", render: () => { renders++; },
+    });
+    f.injector.startSettingsInjector();
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-page-test:page"]')!.click();
+    const content = f.window.document.getElementById("main-content")!;
+    const newGeneral = f.window.document.createElement("div");
+    newGeneral.style.display = "grid";
+    content.appendChild(newGeneral);
+    await f.settle();
+    assert.equal(newGeneral.style.display, "none");
+    assert.equal(content.querySelector<HTMLElement>('[data-codexpp="tweaks-panel"]')!.style.display, "block");
+    const replacement = f.window.document.createElement("div");
+    replacement.style.display = "inline-flex";
+    newGeneral.replaceWith(replacement);
+    await f.settle();
+    assert.equal(replacement.style.display, "none");
+    assert.equal(renders, 1, "native mutations must not rerender a registered page");
+    f.window.document.getElementById("sidebar")!.querySelector<HTMLButtonElement>("button")!.click();
+    assert.equal(newGeneral.style.display, "grid");
+    assert.equal(replacement.style.display, "inline-flex");
+    assert.equal(f.frames.size, 0);
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("removing the active panel from the same host falls back to native settings", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    f.injector.startSettingsInjector();
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
+    const content = f.window.document.getElementById("main-content")!;
+    const newGeneral = f.window.document.createElement("div");
+    newGeneral.style.display = "grid";
+    content.replaceChildren(newGeneral);
+    await f.settle();
+    assert.equal(newGeneral.style.display, "grid");
+    assert.equal(content.querySelector('[data-codexpp="tweaks-panel"]'), null);
+    assert.equal(f.window.document.querySelector('[data-codexpp="nav-config"]')!.getAttribute("aria-current"), null);
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
+    assert.equal(newGeneral.style.display, "none");
+    f.window.document.getElementById("sidebar")!.querySelector<HTMLButtonElement>("button")!.click();
+    assert.equal(newGeneral.style.display, "grid");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("nav group remount alone restores native content before another Config to General cycle", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    f.injector.startSettingsInjector();
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
+    const nativeGeneral = f.window.document.getElementById("native-general")!;
+    const panel = f.window.document.querySelector<HTMLElement>('[data-codexpp="tweaks-panel"]')!;
+    f.window.document.querySelector('[data-codexpp="nav-group"]')!.remove();
+    await f.settle();
+    assert.equal(nativeGeneral.style.display, "flex");
+    assert.equal(panel.style.display, "none");
+    assert.ok(f.window.document.querySelector('[data-codexpp="nav-group"]'));
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
+    assert.equal(nativeGeneral.style.display, "none");
+    f.window.document.getElementById("sidebar")!.querySelector<HTMLButtonElement>("button")!.click();
+    assert.equal(nativeGeneral.style.display, "flex");
+    assert.equal(f.frames.size, 0);
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
 test("settings injection settles without replacing groups in a fade-mask settings scroller", async () => {
   const f = createInjectorFixture();
   try {
