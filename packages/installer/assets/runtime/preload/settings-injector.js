@@ -46,6 +46,8 @@ const state = {
     pagesGroup: null,
     pagesGroupKey: null,
     panelHost: null,
+    contentHost: null,
+    hiddenContent: new Map(),
     observer: null,
     fingerprint: null,
     sidebarDumped: false,
@@ -211,6 +213,9 @@ function tryInject() {
     removeMisplacedSettingsGroups();
     const itemsGroup = findSidebarItemsGroup();
     if (!itemsGroup) {
+        if (state.activePage && (!state.sidebarRoot?.isConnected || !state.contentHost?.isConnected)) {
+            restoreCodexView();
+        }
         scheduleSettingsSurfaceHidden();
         logSidebarMissing();
         return;
@@ -233,6 +238,9 @@ function tryInject() {
         });
         return;
     }
+    if (state.activePage && (state.sidebarRoot !== outer || state.contentHost !== findContentArea())) {
+        restoreCodexView();
+    }
     state.sidebarRoot = outer;
     removeSettingsGroupsOutsideRoot(outer);
     syncNativeSettingsHeader(itemsGroup, outer);
@@ -253,12 +261,14 @@ function tryInject() {
     // even though Codex is showing General. Clear it so `syncPagesGroup` /
     // `setNavActive` start from a neutral state. The panelHost reference is
     // also stale (its DOM was discarded with the previous content area).
-    if (state.activePage !== null || state.panelHost !== null) {
+    if (state.activePage !== null || state.panelHost !== null || state.contentHost !== null) {
         plog("sidebar re-mount detected; clearing stale active state", {
             prevActive: state.activePage,
         });
         state.activePage = null;
         state.panelHost = null;
+        state.contentHost = null;
+        state.hiddenContent.clear();
     }
     const existingCodexPpNavGroup = outer.querySelector(':scope > [data-codexpp="nav-group"]') ??
         outer.querySelector('[data-codexpp="nav-group"]');
@@ -627,18 +637,22 @@ function applyNavActive(btn, active) {
 function activatePage(page) {
     const content = findContentArea();
     if (!content) {
+        if (state.activePage)
+            restoreCodexView();
         plog("activate: content area not found");
         return;
     }
+    if (state.contentHost && state.contentHost !== content)
+        restoreCodexView();
     state.activePage = page;
+    state.contentHost = content;
     plog("activate", { page });
     // Hide Codex's content children, show ours.
     for (const child of Array.from(content.children)) {
         if (child.dataset.codexpp === "tweaks-panel")
             continue;
-        if (child.dataset.codexppHidden === undefined) {
-            child.dataset.codexppHidden = child.style.display || "";
-        }
+        if (!state.hiddenContent.has(child))
+            state.hiddenContent.set(child, child.style.display);
         child.style.display = "none";
     }
     let panel = content.querySelector('[data-codexpp="tweaks-panel"]');
@@ -676,19 +690,13 @@ function activatePage(page) {
 }
 function restoreCodexView() {
     plog("restore codex view");
-    const content = findContentArea();
-    if (!content)
-        return;
     if (state.panelHost)
         state.panelHost.style.display = "none";
-    for (const child of Array.from(content.children)) {
-        if (child === state.panelHost)
-            continue;
-        if (child.dataset.codexppHidden !== undefined) {
-            child.style.display = child.dataset.codexppHidden;
-            delete child.dataset.codexppHidden;
-        }
-    }
+    state.panelHost = null;
+    for (const [child, display] of state.hiddenContent)
+        child.style.display = display;
+    state.hiddenContent.clear();
+    state.contentHost = null;
     state.activePage = null;
     setNavActive(null);
     if (state.sidebarRoot && state.sidebarRestoreHandler) {
@@ -2506,18 +2514,55 @@ function findContentArea() {
     const sidebar = findSidebarItemsGroup();
     if (!sidebar)
         return null;
-    let parent = sidebar.parentElement;
-    while (parent) {
-        for (const child of Array.from(parent.children)) {
-            if (child === sidebar || child.contains(sidebar))
-                continue;
-            const r = child.getBoundingClientRect();
-            if (r.width > 300 && r.height > 200)
-                return child;
-        }
-        parent = parent.parentElement;
+    const workspaceRow = sidebar.closest('[data-app-shell-workspace-row]');
+    if (workspaceRow) {
+        const surfaces = Array.from(workspaceRow.querySelectorAll('[data-app-shell-main-surface="default"]')).filter((surface) => surface.closest('[data-app-shell-workspace-row]') === workspaceRow &&
+            !surface.contains(sidebar) && !sidebar.contains(surface));
+        const areas = surfaces.flatMap((surface) => Array.from(surface.querySelectorAll('[data-app-shell-focus-area="main"]'))
+            .filter((area) => area.closest('[data-app-shell-main-surface="default"]') === surface)
+            .filter((area) => isVisibleSettingsContent(area, workspaceRow)));
+        if (areas.length === 1)
+            return areas[0];
+        plog("content area rejected", {
+            reason: areas.length === 0 ? "no visible native main in settings row" : "ambiguous native main in settings row",
+        });
+        return null;
     }
+    const navRoot = sidebar.closest('nav, aside, [role="navigation"], .overflow-y-auto');
+    const legacyRow = navRoot?.parentElement;
+    if (!navRoot || !(0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(navRoot) || !legacyRow || legacyRow === document.body) {
+        plog("content area rejected", { reason: "no identifiable legacy settings row" });
+        return null;
+    }
+    const candidates = Array.from(legacyRow.children)
+        .filter((child) => child instanceof HTMLElement && !child.contains(navRoot))
+        .filter((child) => {
+        const rect = child.getBoundingClientRect();
+        return rect.width > 300 && rect.height > 200;
+    })
+        .filter((child) => isVisibleSettingsContent(child, legacyRow))
+        .filter((child) => getComputedStyle(child).position !== "absolute");
+    if (candidates.length === 1)
+        return candidates[0];
+    plog("content area rejected", {
+        reason: candidates.length ? "ambiguous legacy siblings" : "no visible legacy content",
+    });
     return null;
+}
+function isVisibleSettingsContent(node, boundary) {
+    if (!node.isConnected)
+        return false;
+    for (let current = node; current; current = current.parentElement) {
+        if (current.hidden || current.hasAttribute("inert") || current.getAttribute("aria-hidden") === "true")
+            return false;
+        const style = getComputedStyle(current);
+        if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse")
+            return false;
+        if (current === boundary)
+            break;
+    }
+    const rect = node.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
 }
 function maybeDumpDom() {
     try {
