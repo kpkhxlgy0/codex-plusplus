@@ -2931,48 +2931,42 @@ function resetCodexPpInjectedSettingsGroupState(group: HTMLElement): void {
 function findContentArea(): HTMLElement | null {
   const sidebar = findSidebarItemsGroup();
   if (!sidebar) return null;
-  let parent = sidebar.parentElement;
-  let depth = 0;
-  while (parent && parent !== document.body) {
-    const siblings = Array.from(parent.children)
-      .filter((child): child is HTMLElement => child instanceof HTMLElement && !child.contains(sidebar));
-    const surfaces = siblings.flatMap((sibling) => [
-      ...(sibling.matches('[data-app-shell-main-surface="default"]') ? [sibling] : []),
-      ...Array.from(sibling.querySelectorAll<HTMLElement>('[data-app-shell-main-surface="default"]')),
-    ]);
-    if (surfaces.length > 0) {
-      const areas = surfaces.flatMap((surface) =>
-        Array.from(surface.querySelectorAll<HTMLElement>('[data-app-shell-focus-area="main"]'))
-          .filter((area) => area.closest('[data-app-shell-main-surface="default"]') === surface)
-          .filter((area) => isVisibleSettingsContent(area, parent!)));
-      if (areas.length === 1) return areas[0];
-      plog("content area rejected", { reason: areas.length === 0 ? "no visible native main" : "ambiguous native main" });
-      return null;
-    }
-    parent = parent.parentElement;
-  }
-
-  parent = sidebar.parentElement;
-  while (parent && parent !== document.body && depth++ < 6) {
-    const siblings = Array.from(parent.children)
-      .filter((child) => !child.contains(sidebar))
-      .filter((child): child is HTMLElement => child instanceof HTMLElement)
-      .filter((child) => {
-        const rect = child.getBoundingClientRect();
-        return rect.width > 300 && rect.height > 200;
-      });
-    if (siblings.length === 0) {
-      parent = parent.parentElement;
-      continue;
-    }
-    const candidates = siblings
-      .filter((child) => isVisibleSettingsContent(child, parent!))
-      .filter((child) => getComputedStyle(child).position !== "absolute");
-    if (candidates.length === 1) return candidates[0];
-    plog("content area rejected", { reason: candidates.length ? "ambiguous legacy siblings" : "no visible legacy content" });
+  const workspaceRow = sidebar.closest<HTMLElement>('[data-app-shell-workspace-row]');
+  if (workspaceRow) {
+    const surfaces = Array.from(
+      workspaceRow.querySelectorAll<HTMLElement>('[data-app-shell-main-surface="default"]'),
+    ).filter((surface) =>
+      surface.closest('[data-app-shell-workspace-row]') === workspaceRow &&
+      !surface.contains(sidebar) && !sidebar.contains(surface));
+    const areas = surfaces.flatMap((surface) =>
+      Array.from(surface.querySelectorAll<HTMLElement>('[data-app-shell-focus-area="main"]'))
+        .filter((area) => area.closest('[data-app-shell-main-surface="default"]') === surface)
+        .filter((area) => isVisibleSettingsContent(area, workspaceRow)));
+    if (areas.length === 1) return areas[0];
+    plog("content area rejected", {
+      reason: areas.length === 0 ? "no visible native main in settings row" : "ambiguous native main in settings row",
+    });
     return null;
   }
-  plog("content area rejected", { reason: "no settings content sibling" });
+
+  const navRoot = sidebar.closest<HTMLElement>('nav, aside, [role="navigation"], .overflow-y-auto');
+  const legacyRow = navRoot?.parentElement;
+  if (!navRoot || !isSettingsSidebarCandidate(navRoot) || !legacyRow || legacyRow === document.body) {
+    plog("content area rejected", { reason: "no identifiable legacy settings row" });
+    return null;
+  }
+  const candidates = Array.from(legacyRow.children)
+    .filter((child): child is HTMLElement => child instanceof HTMLElement && !child.contains(navRoot))
+    .filter((child) => {
+      const rect = child.getBoundingClientRect();
+      return rect.width > 300 && rect.height > 200;
+    })
+    .filter((child) => isVisibleSettingsContent(child, legacyRow))
+    .filter((child) => getComputedStyle(child).position !== "absolute");
+  if (candidates.length === 1) return candidates[0];
+  plog("content area rejected", {
+    reason: candidates.length ? "ambiguous legacy siblings" : "no visible legacy content",
+  });
   return null;
 }
 

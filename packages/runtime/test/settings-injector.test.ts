@@ -34,11 +34,12 @@ function createInjectorFixture(
          <div><button>General</button><button>Appearance</button><button>Git</button></div>
        </nav>${layout === "legacy" ? `<div id="main-content">${nativeContent}</div>` : ""}`;
   const dom = new JSDOM(`<!doctype html><html><body>
-    <section ${wrapper}>${content}</section>
+    <section ${layout === "modern" ? 'data-app-shell-workspace-row="true"' : ""} ${wrapper}>${content}</section>
   </body></html>`, { url: "https://codex.test/settings", runScripts: "outside-only" });
   const { window } = dom;
   window.HTMLElement.prototype.getBoundingClientRect = function () {
-    const width = this.id === "background" ? 900 : this.id === "main-content" ? mainWidth :
+    const width = this.id === "background" ? 900 : this.id === "narrow-native" ? 240 :
+      this.id === "main-content" ? mainWidth :
       this.id === "sidebar" ? 300 : 700;
     return new window.DOMRect(0, 0, width, this.id === "sidebar" ? 640 : 400);
   };
@@ -244,6 +245,56 @@ test("legacy fallback does not escape a settings row with only decorative conten
     f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
     assert.equal(f.window.document.querySelector('[data-codexpp="tweaks-panel"]'), null);
     assert.equal(f.window.document.getElementById("native-general")!.style.display, "flex");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("modern settings row without its main surface cannot mount in an outer app main", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    const row = f.window.document.querySelector("section")!;
+    const app = f.window.document.createElement("div");
+    row.parentElement!.appendChild(app);
+    app.appendChild(row);
+    const outer = f.window.document.createElement("main");
+    outer.id = "outer-main";
+    outer.dataset.appShellMainSurface = "default";
+    outer.innerHTML = '<div data-app-shell-focus-area="main"><div id="foreign-general" style="display:grid">Other page</div></div>';
+    app.appendChild(outer);
+    row.querySelector<HTMLElement>('[data-app-shell-main-surface="default"]')!
+      .removeAttribute("data-app-shell-main-surface");
+    f.injector.startSettingsInjector();
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
+    assert.equal(f.window.document.querySelector('[data-codexpp="tweaks-panel"]'), null);
+    assert.equal(f.window.document.getElementById("native-general")!.style.display, "flex");
+    assert.equal(f.window.document.getElementById("foreign-general")!.style.display, "grid");
+    assert.ok(f.logs.some((line) => line.includes("content area rejected")));
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("legacy settings row without a usable content sibling cannot mount in outer app content", async () => {
+  const f = createInjectorFixture("", "legacy");
+  try {
+    const row = f.window.document.querySelector("section")!;
+    const app = f.window.document.createElement("div");
+    row.parentElement!.appendChild(app);
+    app.appendChild(row);
+    const outer = f.window.document.createElement("div");
+    outer.id = "outer-main";
+    outer.innerHTML = '<div id="foreign-general" style="display:grid">Other page</div>';
+    app.appendChild(outer);
+    f.window.document.getElementById("main-content")!.id = "narrow-native";
+    f.injector.startSettingsInjector();
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
+    assert.equal(f.window.document.querySelector('[data-codexpp="tweaks-panel"]'), null);
+    assert.equal(f.window.document.getElementById("native-general")!.style.display, "flex");
+    assert.equal(f.window.document.getElementById("foreign-general")!.style.display, "grid");
+    assert.ok(f.logs.some((line) => line.includes("content area rejected")));
   } finally {
     await new Promise<void>((done) => setImmediate(done));
     f.dom.window.close();
