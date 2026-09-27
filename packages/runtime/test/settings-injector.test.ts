@@ -22,18 +22,32 @@ function createInjectorFixture(
   mainWidth = 700,
 ) {
   const nativeContent = `<div id="native-general" style="display:flex">Native General</div>`;
+  const sidebarButtons = layout === "modern"
+    ? `<button id="native-general-nav" class="sidebar-item bg-primary-ghost-hover" aria-current="page">
+         <div class="text-emphasis"><span class="text-codex-icon-active">G</span><span>General</span></div>
+       </button>
+       <button class="sidebar-item hover:bg-primary-ghost-hover data-[state=open]:bg-primary-ghost-hover">
+         <div class="text-default"><span>A</span><span>Appearance</span></div>
+       </button><button>Git</button>`
+    : `<button>General</button><button>Appearance</button><button>Git</button>`;
   const content = layout === "modern"
     ? `<div id="background" aria-hidden="true" style="position:absolute">Decorative PageSurface</div>
        <div id="left-panel"><nav id="sidebar" class="overflow-y-auto vertical-scroll-fade-mask">
-         <div><button>General</button><button>Appearance</button><button>Git</button></div>
+         <div>${sidebarButtons}</div>
        </nav></div>
        <main data-app-shell-main-surface="default"><div id="main-content" data-app-shell-focus-area="main">
          ${nativeContent}
        </div></main>`
     : `<nav id="sidebar" class="overflow-y-auto vertical-scroll-fade-mask">
-         <div><button>General</button><button>Appearance</button><button>Git</button></div>
+         <div>${sidebarButtons}</div>
        </nav>${layout === "legacy" ? `<div id="main-content">${nativeContent}</div>` : ""}`;
-  const dom = new JSDOM(`<!doctype html><html><body>
+  const dom = new JSDOM(`<!doctype html><html><head><style>
+    .sidebar-item { background-color: transparent; }
+    .bg-primary-ghost-hover { background-color: rgb(20, 40, 60); }
+    .text-default { color: rgb(40, 40, 40); }
+    .text-emphasis { color: rgb(255, 255, 255); }
+    .text-codex-icon-active { color: rgb(0, 120, 255); }
+  </style></head><body>
     <section ${layout === "modern" ? 'data-app-shell-workspace-row="true"' : ""} ${wrapper}>${content}</section>
   </body></html>`, { url: "https://codex.test/settings", runScripts: "outside-only" });
   const { window } = dom;
@@ -79,6 +93,96 @@ function createInjectorFixture(
   }
   return { dom, window, injector, frames, logs, settle };
 }
+
+test("modern Config selection visibly replaces General and same-General click restores native styling", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    f.injector.startSettingsInjector();
+    const native = f.window.document.getElementById("native-general-nav") as HTMLButtonElement;
+    const config = f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!;
+    const originalColor = f.window.getComputedStyle(native).backgroundColor;
+    assert.equal(originalColor, "rgb(20, 40, 60)");
+    config.click();
+    assert.equal(f.window.getComputedStyle(native).backgroundColor, "rgba(0, 0, 0, 0)");
+    assert.equal(f.window.getComputedStyle(config).backgroundColor, originalColor);
+    assert.equal(native.getAttribute("aria-current"), null);
+    assert.equal(native.firstElementChild!.classList.contains("text-default"), true);
+    assert.equal(native.querySelector("span")!.classList.contains("text-codex-icon-active"), false);
+    assert.equal(config.getAttribute("aria-current"), "page");
+    assert.equal(config.firstElementChild!.classList.contains("text-emphasis"), true);
+    assert.equal(config.querySelector("svg")!.classList.contains("text-codex-icon-active"), true);
+    native.click();
+    assert.equal(f.window.getComputedStyle(native).backgroundColor, originalColor);
+    assert.equal(native.getAttribute("aria-current"), "page");
+    assert.equal(native.firstElementChild!.classList.contains("text-emphasis"), true);
+    assert.equal(native.querySelector("span")!.classList.contains("text-codex-icon-active"), true);
+    assert.equal(config.getAttribute("aria-current"), null);
+    assert.equal(f.window.document.getElementById("native-general")!.style.display, "flex");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("modern native General rerender stays muted across custom page switches", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    f.injector.startSettingsInjector();
+    const sidebar = f.window.document.getElementById("sidebar")!;
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
+    const native = f.window.document.getElementById("native-general-nav")!;
+    const replacement = native.cloneNode(true) as HTMLButtonElement;
+    replacement.classList.add("bg-primary-ghost-hover");
+    replacement.setAttribute("aria-current", "page");
+    replacement.firstElementChild!.classList.add("text-emphasis");
+    replacement.querySelector("span")!.classList.add("text-codex-icon-active");
+    native.replaceWith(replacement);
+    await f.settle();
+    assert.equal(f.window.getComputedStyle(replacement).backgroundColor, "rgba(0, 0, 0, 0)");
+    for (const selection of ["nav-tweaks", "nav-tweak store", "nav-config"]) {
+      const selected = f.window.document.querySelector<HTMLButtonElement>(`[data-codexpp="${selection}"]`)!;
+      selected.click();
+      assert.equal(f.window.getComputedStyle(selected).backgroundColor, "rgb(20, 40, 60)");
+      assert.equal(f.window.getComputedStyle(replacement).backgroundColor, "rgba(0, 0, 0, 0)");
+    }
+    sidebar.querySelector<HTMLButtonElement>("#native-general-nav")!.click();
+    assert.equal(f.window.getComputedStyle(replacement).backgroundColor, "rgb(20, 40, 60)");
+    assert.equal(f.window.document.getElementById("native-general")!.style.display, "flex");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("legacy native selection classes return after a custom page", async () => {
+  const f = createInjectorFixture("", "legacy");
+  try {
+    const native = f.window.document.querySelector<HTMLButtonElement>("#sidebar button")!;
+    native.classList.add("bg-token-list-hover-background");
+    native.setAttribute("aria-current", "page");
+    native.innerHTML = `<div class="text-token-list-active-selection-foreground">
+      <span class="text-token-list-active-selection-icon-foreground">G</span><span>General</span>
+    </div>`;
+    f.injector.startSettingsInjector();
+    const config = f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!;
+    config.click();
+    assert.equal(native.classList.contains("bg-token-list-hover-background"), false);
+    assert.equal(native.classList.contains("hover:bg-token-list-hover-background"), true);
+    assert.equal(native.firstElementChild!.classList.contains("text-token-list-active-selection-foreground"), false);
+    assert.equal(native.querySelector("span")!.classList.contains("text-token-list-active-selection-icon-foreground"), false);
+    assert.equal(config.classList.contains("bg-token-list-hover-background"), true);
+    assert.equal(config.firstElementChild!.classList.contains("text-token-list-active-selection-foreground"), true);
+    native.click();
+    assert.equal(native.classList.contains("bg-token-list-hover-background"), true);
+    assert.equal(native.classList.contains("hover:bg-token-list-hover-background"), false);
+    assert.equal(native.firstElementChild!.classList.contains("text-token-list-active-selection-foreground"), true);
+    assert.equal(native.querySelector("span")!.classList.contains("text-token-list-active-selection-icon-foreground"), true);
+    assert.equal(native.getAttribute("aria-current"), "page");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
 
 test("Config mounts inside the visible main focus area instead of the decorative PageSurface", async () => {
   const f = createInjectorFixture("", "modern");
