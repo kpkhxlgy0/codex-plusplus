@@ -4,6 +4,19 @@ All notable changes to codex-plusplus are documented here.
 
 This project uses semver for the installer, runtime, SDK, and published CLI package. Tweak authors should also use semver release tags so the manager can compare installed and available versions.
 
+## 1.0.5
+
+Release notes: [docs/releases/1.0.5.md](docs/releases/1.0.5.md)
+
+### Fixed
+
+- Restore Codex++ Settings content placement after the Codex Desktop 26.924 layout changes, including native content and sidebar remounts.
+- Match native sidebar selection and switch styles, and restore General when returning from a Codex++ page.
+
+### Tests
+
+- Added regressions for content targeting, remount cleanup, selection restoration, switch colors, and pending save callbacks.
+
 ## 1.0.4
 
 Release notes: [docs/releases/1.0.4.md](docs/releases/1.0.4.md)
