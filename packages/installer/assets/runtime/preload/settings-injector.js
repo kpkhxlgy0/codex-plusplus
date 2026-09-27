@@ -34,6 +34,19 @@ const settings_dom_heuristics_1 = require("./settings-dom-heuristics");
 const settings_icons_1 = require("./settings-icons");
 const settings_svg_1 = require("./settings-svg");
 const CODEX_PLUSPLUS_RELEASES_URL = "https://github.com/kpkhxlgy0/codex-plusplus/releases";
+const NATIVE_SELECTION_CLASSES = [
+    "bg-primary-ghost-hover",
+    "hover:bg-primary-ghost-hover",
+    "data-[state=open]:bg-primary-ghost-hover",
+    "bg-token-list-hover-background",
+    "hover:bg-token-list-hover-background",
+    "text-emphasis",
+    "text-default",
+    "text-token-list-active-selection-foreground",
+    "text-token-foreground",
+    "text-codex-icon-active",
+    "text-token-list-active-selection-icon-foreground",
+];
 const state = {
     sections: new Map(),
     pages: new Map(),
@@ -54,6 +67,7 @@ const state = {
     activePage: null,
     sidebarRoot: null,
     sidebarRestoreHandler: null,
+    nativeNavSelection: new Map(),
     settingsSurfaceVisible: false,
     settingsSurfaceHideTimer: null,
     tweakStore: null,
@@ -527,10 +541,10 @@ function makeSidebarItem(label, iconSvg) {
     btn.dataset.codexpp = `nav-${label.toLowerCase()}`;
     btn.setAttribute("aria-label", label);
     btn.className =
-        "focus-visible:outline-token-border relative px-row-x py-row-y cursor-interaction shrink-0 items-center overflow-hidden rounded-lg text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 gap-2 flex w-full hover:bg-token-list-hover-background font-normal";
+        "focus-visible:outline-token-border relative px-row-x py-row-y cursor-interaction shrink-0 items-center overflow-hidden rounded-lg text-left text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed disabled:opacity-50 gap-2 flex w-full hover:bg-primary-ghost-hover data-[state=open]:bg-primary-ghost-hover hover:bg-token-list-hover-background font-normal";
     const inner = document.createElement("div");
     inner.className =
-        "flex min-w-0 items-center text-base gap-2 flex-1 text-token-foreground";
+        "flex min-w-0 items-center text-base gap-2 flex-1 text-default text-token-foreground";
     (0, settings_svg_1.appendSvgHtml)(inner, iconSvg);
     const text = document.createElement("span");
     text.className = "truncate";
@@ -584,17 +598,28 @@ function setNavActive(active) {
 }
 /**
  * Mute Codex's own active-state styling on its sidebar buttons. We don't
- * touch Codex's React state — when the user clicks a native item, Codex
- * re-renders the buttons and re-applies its own correct state, then our
- * sidebar-click listener fires `restoreCodexView` (which calls back into
- * `setNavActive(null)` and lets Codex's styling stand).
+ * touch Codex's React state. Our capture-phase native-click listener restores
+ * the saved styling before Codex's route handler runs, so selecting the same
+ * native item also works when React does not re-render it.
  *
- * `mute=true`  → strip aria-current and swap active bg → hover bg
- * `mute=false` → no-op (Codex's own re-render already restored things)
+ * `mute=true`  → save and strip native selection styling
+ * `mute=false` → restore the saved styling, including same-item clicks without a React re-render
  */
 function syncCodexNativeNavActive(mute) {
-    if (!mute)
+    if (!mute) {
+        for (const [btn, snapshot] of state.nativeNavSelection) {
+            if (snapshot.ariaCurrent === null)
+                btn.removeAttribute("aria-current");
+            else
+                btn.setAttribute("aria-current", snapshot.ariaCurrent);
+            for (const [element, classes] of snapshot.classSnapshots) {
+                for (const name of NATIVE_SELECTION_CLASSES)
+                    element.classList.toggle(name, classes.has(name));
+            }
+        }
+        state.nativeNavSelection.clear();
         return;
+    }
     const root = state.sidebarRoot;
     if (!root)
         return;
@@ -603,39 +628,64 @@ function syncCodexNativeNavActive(mute) {
         // Skip our own buttons.
         if (btn.dataset.codexpp)
             continue;
-        if (btn.getAttribute("aria-current") === "page") {
-            btn.removeAttribute("aria-current");
+        const active = btn.getAttribute("aria-current") === "page" ||
+            btn.classList.contains("bg-primary-ghost-hover") ||
+            btn.classList.contains("bg-token-list-hover-background");
+        if (!active && !state.nativeNavSelection.has(btn))
+            continue;
+        let snapshot = state.nativeNavSelection.get(btn);
+        if (!snapshot) {
+            snapshot = { ariaCurrent: btn.getAttribute("aria-current"), classSnapshots: new Map() };
+            state.nativeNavSelection.set(btn, snapshot);
         }
-        if (btn.classList.contains("bg-token-list-hover-background")) {
-            btn.classList.remove("bg-token-list-hover-background");
-            btn.classList.add("hover:bg-token-list-hover-background");
+        captureNativeSelectionClasses(snapshot, btn);
+        btn.removeAttribute("aria-current");
+        btn.classList.remove("bg-primary-ghost-hover", "bg-token-list-hover-background");
+        btn.classList.add("hover:bg-primary-ghost-hover", "data-[state=open]:bg-primary-ghost-hover", "hover:bg-token-list-hover-background");
+        const inner = btn.firstElementChild;
+        if (inner) {
+            captureNativeSelectionClasses(snapshot, inner);
+            inner.classList.remove("text-emphasis", "text-token-list-active-selection-foreground");
+            inner.classList.add("text-default", "text-token-foreground");
+        }
+        for (const icon of Array.from(btn.querySelectorAll("*"))) {
+            if (!icon.classList.contains("text-codex-icon-active") &&
+                !icon.classList.contains("text-token-list-active-selection-icon-foreground"))
+                continue;
+            captureNativeSelectionClasses(snapshot, icon);
+            icon.classList.remove("text-codex-icon-active", "text-token-list-active-selection-icon-foreground");
         }
     }
+}
+function captureNativeSelectionClasses(snapshot, element) {
+    if (snapshot.classSnapshots.has(element))
+        return;
+    snapshot.classSnapshots.set(element, new Set(NATIVE_SELECTION_CLASSES.filter((name) => element.classList.contains(name))));
 }
 function applyNavActive(btn, active) {
     const inner = btn.firstElementChild;
     if (active) {
-        btn.classList.remove("hover:bg-token-list-hover-background", "font-normal");
-        btn.classList.add("bg-token-list-hover-background");
+        btn.classList.remove("hover:bg-primary-ghost-hover", "data-[state=open]:bg-primary-ghost-hover", "hover:bg-token-list-hover-background", "font-normal");
+        btn.classList.add("bg-primary-ghost-hover", "bg-token-list-hover-background");
         btn.setAttribute("aria-current", "page");
         if (inner) {
-            inner.classList.remove("text-token-foreground");
-            inner.classList.add("text-token-list-active-selection-foreground");
+            inner.classList.remove("text-default", "text-token-foreground");
+            inner.classList.add("text-emphasis", "text-token-list-active-selection-foreground");
             inner
                 .querySelector("svg")
-                ?.classList.add("text-token-list-active-selection-icon-foreground");
+                ?.classList.add("text-codex-icon-active", "text-token-list-active-selection-icon-foreground");
         }
     }
     else {
-        btn.classList.add("hover:bg-token-list-hover-background", "font-normal");
-        btn.classList.remove("bg-token-list-hover-background");
+        btn.classList.add("hover:bg-primary-ghost-hover", "data-[state=open]:bg-primary-ghost-hover", "hover:bg-token-list-hover-background", "font-normal");
+        btn.classList.remove("bg-primary-ghost-hover", "bg-token-list-hover-background");
         btn.removeAttribute("aria-current");
         if (inner) {
-            inner.classList.add("text-token-foreground");
-            inner.classList.remove("text-token-list-active-selection-foreground");
+            inner.classList.add("text-default", "text-token-foreground");
+            inner.classList.remove("text-emphasis", "text-token-list-active-selection-foreground");
             inner
                 .querySelector("svg")
-                ?.classList.remove("text-token-list-active-selection-icon-foreground");
+                ?.classList.remove("text-codex-icon-active", "text-token-list-active-selection-icon-foreground");
         }
     }
 }
