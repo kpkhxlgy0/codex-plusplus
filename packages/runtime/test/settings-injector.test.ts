@@ -20,6 +20,7 @@ function createInjectorFixture(
   wrapper = "",
   layout: "empty" | "modern" | "legacy" = "empty",
   mainWidth = 700,
+  invokeOverride?: (channel: string, ...args: unknown[]) => Promise<unknown>,
 ) {
   const nativeContent = `<div id="native-general" style="display:flex">Native General</div>`;
   const sidebarButtons = layout === "modern"
@@ -47,6 +48,12 @@ function createInjectorFixture(
     .text-default { color: rgb(40, 40, 40); }
     .text-emphasis { color: rgb(255, 255, 255); }
     .text-codex-icon-active { color: rgb(0, 120, 255); }
+    .bg-chart-blue { background-color: rgb(0, 100, 255); }
+    [class~="bg-text/10"] { background-color: rgba(40, 40, 40, 0.1); }
+    .bg-control-thumb-on-accent { background-color: rgb(255, 255, 255); }
+    .border-control-thumb-on-accent { border-color: rgb(255, 255, 255); }
+    .h-5 { height: 20px; } .w-8 { width: 32px; }
+    .h-4 { height: 16px; } .w-4 { width: 16px; }
   </style></head><body>
     <section ${layout === "modern" ? 'data-app-shell-workspace-row="true"' : ""} ${wrapper}>${content}</section>
   </body></html>`, { url: "https://codex.test/settings", runScripts: "outside-only" });
@@ -66,7 +73,8 @@ function createInjectorFixture(
   const logs: string[] = [];
   const ipcRenderer = {
     send: (_channel: string, _level: string, message: string) => logs.push(message),
-    invoke: async (channel: string) => {
+    invoke: async (channel: string, ...args: unknown[]) => {
+      if (invokeOverride) return invokeOverride(channel, ...args);
       if (channel === "codexpp:get-tweak-store") return { entries: [] };
       if (channel === "codexpp:check-codexpp-update") return null;
       throw new Error(`Unexpected IPC: ${channel}`);
@@ -178,6 +186,96 @@ test("legacy native selection classes return after a custom page", async () => {
     assert.equal(native.firstElementChild!.classList.contains("text-token-list-active-selection-foreground"), true);
     assert.equal(native.querySelector("span")!.classList.contains("text-token-list-active-selection-icon-foreground"), true);
     assert.equal(native.getAttribute("aria-current"), "page");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("Config switch shows the native track and thumb in both states while saving one click at a time", async () => {
+  const saved: boolean[] = [];
+  let finishFirstSave: () => void = () => {};
+  const firstSave = new Promise<void>((resolve) => { finishFirstSave = resolve; });
+  const f = createInjectorFixture("", "modern", 700, async (channel, ...args) => {
+    if (channel === "codexpp:get-tweak-store") return { entries: [] };
+    if (channel === "codexpp:get-config") return {
+      version: "1.0.4", autoUpdate: true, updateChannel: "stable", updateRepo: "", updateRef: "",
+      updateCheck: null, selfUpdate: null, installationSource: { label: "Local", detail: "Test" },
+    };
+    if (channel === "codexpp:set-auto-update") {
+      saved.push(args[0] as boolean);
+      if (saved.length === 1) await firstSave;
+      return null;
+    }
+    throw new Error(`Unexpected IPC: ${channel}`);
+  });
+  try {
+    f.injector.startSettingsInjector();
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
+    await f.settle();
+    const control = f.window.document.querySelector<HTMLButtonElement>(
+      '[data-codexpp-config-card] button[role="switch"]',
+    )!;
+    const track = control.firstElementChild as HTMLElement;
+    const thumb = track.firstElementChild as HTMLElement;
+    assert.equal(control.getAttribute("aria-checked"), "true");
+    assert.equal(f.window.getComputedStyle(track).backgroundColor, "rgb(0, 100, 255)");
+    assert.equal(f.window.getComputedStyle(track).width, "32px");
+    assert.equal(f.window.getComputedStyle(track).height, "20px");
+    assert.equal(f.window.getComputedStyle(thumb).backgroundColor, "rgb(255, 255, 255)");
+    assert.equal(f.window.getComputedStyle(thumb).borderColor, "rgb(255, 255, 255)");
+    assert.equal(track.getAttribute("aria-hidden"), "true");
+    assert.equal(thumb.style.transform, "translateX(14px)");
+    control.click();
+    assert.deepEqual(saved, [false]);
+    assert.equal(control.disabled, true);
+    assert.equal(control.getAttribute("aria-checked"), "false");
+    assert.equal(f.window.getComputedStyle(track).backgroundColor, "rgba(40, 40, 40, 0.1)");
+    assert.equal(f.window.getComputedStyle(thumb).backgroundColor, "rgb(255, 255, 255)");
+    assert.equal(thumb.style.transform, "translateX(2px)");
+    control.click();
+    assert.deepEqual(saved, [false]);
+    finishFirstSave();
+    await f.settle();
+    assert.equal(control.disabled, false);
+    control.click();
+    await f.settle();
+    assert.deepEqual(saved, [false, true]);
+    assert.equal(control.getAttribute("aria-checked"), "true");
+    assert.equal(f.window.getComputedStyle(track).backgroundColor, "rgb(0, 100, 255)");
+    assert.equal(thumb.style.transform, "translateX(14px)");
+  } finally {
+    finishFirstSave();
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("off tweak switch uses the same track and sends the enabled state", async () => {
+  const saved: unknown[][] = [];
+  const f = createInjectorFixture("", "modern", 700, async (channel, ...args) => {
+    if (channel === "codexpp:get-tweak-store") return { entries: [] };
+    if (channel === "codexpp:set-tweak-enabled") { saved.push(args); return null; }
+    throw new Error(`Unexpected IPC: ${channel}`);
+  });
+  try {
+    f.injector.setListedTweaks([{
+      manifest: { id: "demo", name: "Demo", version: "1.0" }, entry: "", dir: "",
+      entryExists: true, enabled: false, update: null,
+    }]);
+    f.injector.startSettingsInjector();
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-tweaks"]')!.click();
+    const control = f.window.document.querySelector<HTMLButtonElement>('button[role="switch"]')!;
+    const track = control.firstElementChild as HTMLElement;
+    const thumb = track.firstElementChild as HTMLElement;
+    assert.equal(control.getAttribute("aria-checked"), "false");
+    assert.equal(f.window.getComputedStyle(track).backgroundColor, "rgba(40, 40, 40, 0.1)");
+    assert.equal(f.window.getComputedStyle(thumb).backgroundColor, "rgb(255, 255, 255)");
+    control.click();
+    await f.settle();
+    assert.deepEqual(saved, [["demo", true]]);
+    assert.equal(control.getAttribute("aria-checked"), "true");
+    assert.equal(f.window.getComputedStyle(track).backgroundColor, "rgb(0, 100, 255)");
   } finally {
     await new Promise<void>((done) => setImmediate(done));
     f.dom.window.close();
