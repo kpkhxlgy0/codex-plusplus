@@ -2435,16 +2435,17 @@ function switchControl(initial, onChange) {
     btn.type = "button";
     btn.setAttribute("role", "switch");
     const pill = document.createElement("span");
+    pill.setAttribute("aria-hidden", "true");
     const knob = document.createElement("span");
     knob.className =
-        "rounded-full border border-[color:var(--gray-0)] bg-[color:var(--gray-0)] shadow-sm transition-transform duration-200 ease-out h-4 w-4";
+        "rounded-full border border-control-thumb-on-accent bg-control-thumb-on-accent shadow-sm transition-transform duration-200 ease-out h-4 w-4";
     pill.appendChild(knob);
     const apply = (on) => {
         btn.setAttribute("aria-checked", String(on));
         btn.dataset.state = on ? "checked" : "unchecked";
         btn.className =
-            "inline-flex items-center text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-token-focus-border focus-visible:rounded-full cursor-interaction";
-        pill.className = `relative inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out h-5 w-8 ${on ? "bg-token-charts-blue" : "bg-token-foreground/20"}`;
+            "inline-flex items-center text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:rounded-full cursor-interaction";
+        pill.className = `relative inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out h-5 w-8 ${on ? "bg-chart-blue bg-token-charts-blue" : "bg-text/10 bg-token-foreground/20"}`;
         pill.dataset.state = on ? "checked" : "unchecked";
         knob.dataset.state = on ? "checked" : "unchecked";
         knob.style.transform = on ? "translateX(14px)" : "translateX(2px)";
