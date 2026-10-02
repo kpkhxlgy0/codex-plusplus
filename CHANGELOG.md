@@ -4,6 +4,19 @@ All notable changes to codex-plusplus are documented here.
 
 This project uses semver for the installer, runtime, SDK, and published CLI package. Tweak authors should also use semver release tags so the manager can compare installed and available versions.
 
+## 1.0.6
+
+Release notes: [docs/releases/1.0.6.md](docs/releases/1.0.6.md)
+
+### Fixed
+
+- Honor `CODEX_HOME` when syncing tweak-managed MCP servers into the Codex configuration.
+- Keep the default `~/.codex/config.toml` path when `CODEX_HOME` is unset or empty.
+
+### Tests
+
+- Added regressions for custom, unset, and empty `CODEX_HOME` values.
+
 ## 1.0.5
 
 Release notes: [docs/releases/1.0.5.md](docs/releases/1.0.5.md)
