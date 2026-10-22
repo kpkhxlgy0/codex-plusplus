@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-05-12T10:41:53.305Z",
+  "generatedAt": "2026-10-22T08:15:19.688Z",
   "entries": [
     {
       "id": "co.sakushi.add-project-by-path",
@@ -567,6 +567,37 @@
       "platforms": [
         "win32"
       ]
+    },
+    {
+      "id": "com.kpk.session-stats",
+      "manifest": {
+        "id": "com.kpk.session-stats",
+        "name": "Session Stats",
+        "version": "0.1.1",
+        "githubRepo": "kpkhxlgy0/session-stats",
+        "homepage": "https://github.com/kpkhxlgy0/session-stats",
+        "iconUrl": "https://raw.githubusercontent.com/kpkhxlgy0/session-stats/v0.1.0/icon.svg",
+        "description": "会话底部显示轮次、模型调用次数、TPS、累计 Token 和缓存命中率。",
+        "author": "kpkhxlgy0",
+        "scope": "both",
+        "main": "index.js",
+        "minRuntime": "1.0.6",
+        "tags": [
+          "ui",
+          "tokens",
+          "metrics"
+        ],
+        "permissions": [
+          "ipc",
+          "filesystem"
+        ]
+      },
+      "repo": "kpkhxlgy0/session-stats",
+      "approvedCommitSha": "68c60c1f498c67a28a0137867742635708397175",
+      "approvedAt": "2026-10-22T08:15:19.688Z",
+      "approvedBy": "kpkhxlgy0",
+      "releaseUrl": "https://github.com/kpkhxlgy0/session-stats/releases/tag/v0.1.1",
+      "reviewUrl": "https://github.com/kpkhxlgy0/session-stats/commit/68c60c1f498c67a28a0137867742635708397175"
     }
   ]
 }
