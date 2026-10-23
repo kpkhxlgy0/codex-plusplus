@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-22T16:48:05.262Z",
+  "generatedAt": "2026-10-23T06:27:28.382Z",
   "entries": [
     {
       "id": "co.sakushi.add-project-by-path",
@@ -573,7 +573,7 @@
       "manifest": {
         "id": "com.kpk.session-stats",
         "name": "Session Stats",
-        "version": "0.1.5",
+        "version": "0.1.6",
         "githubRepo": "kpkhxlgy0/session-stats",
         "homepage": "https://github.com/kpkhxlgy0/session-stats",
         "iconUrl": "https://raw.githubusercontent.com/kpkhxlgy0/session-stats/v0.1.0/icon.svg",
@@ -593,11 +593,11 @@
         ]
       },
       "repo": "kpkhxlgy0/session-stats",
-      "approvedCommitSha": "f49c0cfb4f7a89cd2c7700d9147544ba80a4b308",
-      "approvedAt": "2026-10-22T16:48:05.262Z",
+      "approvedCommitSha": "fc1929ea37dc7cbfb12b8cba2adc140c1cfff3f3",
+      "approvedAt": "2026-10-23T06:27:28.382Z",
       "approvedBy": "kpkhxlgy0",
-      "releaseUrl": "https://github.com/kpkhxlgy0/session-stats/releases/tag/v0.1.5",
-      "reviewUrl": "https://github.com/kpkhxlgy0/session-stats/commit/f49c0cfb4f7a89cd2c7700d9147544ba80a4b308"
+      "releaseUrl": "https://github.com/kpkhxlgy0/session-stats/releases/tag/v0.1.6",
+      "reviewUrl": "https://github.com/kpkhxlgy0/session-stats/commit/fc1929ea37dc7cbfb12b8cba2adc140c1cfff3f3"
     }
   ]
 }
