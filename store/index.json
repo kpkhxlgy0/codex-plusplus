@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-23T17:54:24.147Z",
+  "generatedAt": "2026-10-24T15:37:26.349Z",
   "entries": [
     {
       "id": "co.sakushi.add-project-by-path",
@@ -573,11 +573,11 @@
       "manifest": {
         "id": "com.kpk.session-stats",
         "name": "Session Stats",
-        "version": "0.1.7",
+        "version": "0.2.0",
         "githubRepo": "kpkhxlgy0/session-stats",
         "homepage": "https://github.com/kpkhxlgy0/session-stats",
         "iconUrl": "https://raw.githubusercontent.com/kpkhxlgy0/session-stats/v0.1.0/icon.svg",
-        "description": "会话底部显示轮次、模型调用次数、TPS、累计 Token 和缓存命中率。",
+        "description": "会话底部显示轮次、模型调用次数、跨轮累计平均 TPS、累计 Token 和缓存命中率。",
         "author": "kpkhxlgy0",
         "scope": "both",
         "main": "index.js",
@@ -593,11 +593,11 @@
         ]
       },
       "repo": "kpkhxlgy0/session-stats",
-      "approvedCommitSha": "8432598d96709ac3c89e6c8dbdba1a018292d6c1",
-      "approvedAt": "2026-10-23T17:54:24.147Z",
+      "approvedCommitSha": "5a5fceb5daeb44c5c8111220f6563f7657c43ba6",
+      "approvedAt": "2026-10-24T15:37:26.349Z",
       "approvedBy": "kpkhxlgy0",
-      "releaseUrl": "https://github.com/kpkhxlgy0/session-stats/releases/tag/v0.1.7",
-      "reviewUrl": "https://github.com/kpkhxlgy0/session-stats/commit/8432598d96709ac3c89e6c8dbdba1a018292d6c1"
+      "releaseUrl": "https://github.com/kpkhxlgy0/session-stats/releases/tag/v0.2.0",
+      "reviewUrl": "https://github.com/kpkhxlgy0/session-stats/commit/5a5fceb5daeb44c5c8111220f6563f7657c43ba6"
     }
   ]
 }
