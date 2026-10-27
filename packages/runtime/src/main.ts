@@ -89,7 +89,7 @@ const SELF_UPDATE_STATE_FILE = join(userRoot, "self-update-state.json");
 const SIGNED_CODEX_BACKUP = join(userRoot, "backup", "Codex.app");
 const CODEX_PLUSPLUS_CLI_SHIM = join(userRoot, "bin", process.platform === "win32" ? "codexplusplus.cmd" : "codexplusplus");
 const POST_UPDATE_REPAIR_LOG_FILE = join(LOG_DIR, "post-update-repair.log");
-const CODEX_PLUSPLUS_VERSION = "1.0.6";
+const CODEX_PLUSPLUS_VERSION = "1.0.7";
 const CODEX_PLUSPLUS_REPO = "kpkhxlgy0/codex-plusplus";
 const TWEAK_STORE_INDEX_URL = process.env.CODEX_PLUSPLUS_STORE_INDEX_URL ?? DEFAULT_TWEAK_STORE_INDEX_URL;
 const CODEX_WINDOW_SERVICES_KEY = "__codexpp_window_services__";
@@ -1015,8 +1015,8 @@ try {
     // Wait for files to settle before triggering — guards against partially
     // written tweak files during editor saves / git checkouts.
     awaitWriteFinish: { stabilityThreshold: 150, pollInterval: 50 },
-    // Avoid eating CPU on huge node_modules trees inside tweak folders.
-    ignored: (p) => p.includes(`${TWEAKS_DIR}/`) && /\/node_modules\//.test(p),
+    // Prune Git metadata and dependency trees, including directory entries.
+    ignored: (p) => /(^|[/\\])(?:\.git|node_modules)(?:[/\\]|$)/.test(p),
   });
   watcher.on("all", (event, path) => scheduleReload(`${event} ${path}`));
   watcher.on("error", (e) => log("warn", "watcher error:", e));

@@ -4,6 +4,13 @@ All notable changes to codex-plusplus are documented here.
 
 This project uses semver for the installer, runtime, SDK, and published CLI package. Tweak authors should also use semver release tags so the manager can compare installed and available versions.
 
+## 1.0.7
+
+Release notes: [docs/releases/1.0.7.md](docs/releases/1.0.7.md)
+
+- Ignore Git metadata and dependency trees in development tweak links without suppressing source or manifest reloads.
+- Handle Windows and POSIX separators and prune ignored directory entries.
+
 ## 1.0.6
 
 Release notes: [docs/releases/1.0.6.md](docs/releases/1.0.6.md)
