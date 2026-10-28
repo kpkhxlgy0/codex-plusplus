@@ -11,8 +11,8 @@ import { writeFuse } from "../fuses.js";
 import { backupFuseCarrier, fuseCarrierIdentity } from "../fuse-backup.js";
 import { clearQuarantine, prepareCodeSigning, signCodexApp, signatureInfo } from "../codesign.js";
 import { readPlist } from "../plist.js";
-import { writeState } from "../state.js";
-import { installWatcher, type WatcherKind } from "../watcher.js";
+import { readState, writeState } from "../state.js";
+import { installWatcher, uninstallWatcher, type WatcherKind } from "../watcher.js";
 import { CODEX_PLUSPLUS_VERSION } from "../version.js";
 import { formatCliShimResult, installCliShims } from "../cli-shim.js";
 import { findSourceRoot } from "../source-root.js";
@@ -46,7 +46,7 @@ export async function install(opts: Opts = {}): Promise<void> {
   const wantsFuseFlip = opts.fuse !== false;
   const resign = opts.resign !== false;
   let localSigning = opts.localSigning === true;
-  const wantWatcher = opts.watcher !== false;
+  const wantWatcher = opts.watcher === true;
 
   const step = makeStepper({ quiet: opts.quiet === true, verbose: opts.verbose === true });
   const codex = locateCodex(opts.app);
@@ -172,6 +172,7 @@ export async function install(opts: Opts = {}): Promise<void> {
   }
 
   // 7. Auto-repair watcher.
+  const previousState = readState(paths.stateFile);
   let watcher: WatcherKind = opts.watcherKind ?? "none";
   if (wantWatcher) {
     try {
@@ -180,6 +181,8 @@ export async function install(opts: Opts = {}): Promise<void> {
     } catch (e) {
       console.warn(kleur.yellow(`Watcher install failed: ${(e as Error).message}`));
     }
+  } else if (opts.watcherKind === undefined && previousState?.watcher && previousState.watcher !== "none") {
+    uninstallWatcher();
   }
 
   // 8. Persist state.

@@ -109,7 +109,9 @@ own preload and break the app. The runtime uses
 
 ## Update handling
 
-When Codex auto-updates via Sparkle:
+The watcher is opt-in (`codexplusplus install --watcher`); ordinary installs do not enable it, and an ordinary reinstall without `--watcher` removes a previously configured watcher so it cannot keep running an old CLI source path. Without a watcher, run `codexplusplus repair` after an app update. Repair preserves a previously configured watcher.
+
+When Codex auto-updates via Sparkle and the watcher is enabled:
 
 1. Sparkle downloads a new Codex.app and replaces ours on disk.
 2. Our patch is gone; the new app launches normally.
@@ -119,7 +121,9 @@ When Codex auto-updates via Sparkle:
 
 ## Codex++ self-updates
 
-The watcher also runs hourly using the GitHub-installed local CLI at `~/.codex-plusplus/source/packages/installer/dist/cli.js`. It checks the latest Codex++ GitHub Release, downloads and rebuilds a newer release when available, then runs `repair`. When the app patch is intact but the installed Codex++ version in `state.json` is older than the running CLI, `repair` refreshes `<user-data-dir>/runtime/` and updates state. For local runtime development on the same version, `codexplusplus repair --runtime` forces that runtime refresh without repatching the app bundle. It does not modify user tweak folders.
+When enabled, the watcher checks for source updates hourly using the CLI from the installed source tree. For a GitHub archive installation (normally `~/.codex-plusplus/source`), it downloads and rebuilds a newer release when available, then runs `repair`. Git checkouts are protected from source replacement; update them with Git and rerun their local installer. The watcher can still repair the app from a checkout. Manual and automatic updates also protect source backup destinations before deleting or replacing them.
+
+When the app patch is intact but the installed Codex++ version in `state.json` is older than the running CLI, `repair` refreshes `<user-data-dir>/runtime/` and updates state. For local runtime development on the same version, `codexplusplus repair --runtime` forces that runtime refresh without repatching the app bundle. It does not modify user tweak folders.
 
 Users can disable Codex++ runtime auto-updates from Settings → Codex Plus Plus → Config. The setting is stored in `<user-data-dir>/config.json`; app-update repair still works, but intact-app runtime refreshes are skipped while auto-update is disabled.
 

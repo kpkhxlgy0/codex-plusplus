@@ -18,6 +18,7 @@ import { extract as extractTar } from "tar";
 import { ensureUserPaths } from "../paths.js";
 import { CODEX_PLUSPLUS_VERSION, compareSemver } from "../version.js";
 import { describeInstallationSource, findSourceRoot } from "../source-root.js";
+import { assertSafeSourceReplacement } from "../source-replacement.js";
 import {
   readSelfUpdateState,
   type SelfUpdateChannel,
@@ -81,10 +82,9 @@ export async function selfUpdate(opts: Opts = {}): Promise<void> {
   const repo = opts.repo ?? process.env.CODEX_PLUSPLUS_REPO ?? config.updateRepo ?? "kpkhxlgy0/codex-plusplus";
   const sourceRoot = findSourceRoot(here);
   const parent = dirname(sourceRoot);
-  const work = mkdtempSync(join(tmpdir(), "codexpp-update-"));
-  const archive = join(work, "source.tar.gz");
-  const next = join(work, "source");
   const previous = `${sourceRoot}.previous`;
+  const failed = `${sourceRoot}.failed`;
+  let work: string | undefined;
   let target: UpdateTarget | null = null;
 
   try {
@@ -97,6 +97,23 @@ export async function selfUpdate(opts: Opts = {}): Promise<void> {
           sourceRoot,
         }));
         log(opts, "Codex++ auto-update is disabled; running repair only.");
+        runRepairIfRequested(opts, sourceRoot, parent);
+        return;
+      }
+
+      try {
+        assertSafeSourceReplacement(sourceRoot, previous, failed);
+      } catch (error) {
+        if (!opts.watcher) throw error;
+        const reason = error instanceof Error ? error.message : String(error);
+        writeSelfUpdateState(paths.selfUpdateStateFile, selfUpdateState({
+          status: "disabled",
+          repo,
+          channel: config.updateChannel ?? "stable",
+          sourceRoot,
+          error: reason,
+        }));
+        log(opts, `Codex++ source auto-update is disabled: ${reason} Running repair only.`);
         runRepairIfRequested(opts, sourceRoot, parent);
         return;
       }
@@ -128,6 +145,9 @@ export async function selfUpdate(opts: Opts = {}): Promise<void> {
         return;
       }
 
+      work = mkdtempSync(join(tmpdir(), "codexpp-update-"));
+      const archive = join(work, "source.tar.gz");
+      const next = join(work, "source");
       log(opts, `Downloading codex-plusplus from https://github.com/${repo} (${target.ref})...`);
       await download(`https://codeload.github.com/${repo}/tar.gz/${target.ref}`, archive);
       mkdirSync(next, { recursive: true });
@@ -137,6 +157,7 @@ export async function selfUpdate(opts: Opts = {}): Promise<void> {
       installDependencies(next, opts);
       run(npmCommand(), ["run", "build"], next, opts);
 
+      assertSafeSourceReplacement(sourceRoot, previous, failed);
       rmSync(previous, { recursive: true, force: true });
       if (existsSync(sourceRoot)) renameSync(sourceRoot, previous);
       renameSync(next, sourceRoot);
@@ -169,7 +190,7 @@ export async function selfUpdate(opts: Opts = {}): Promise<void> {
       throw e;
     }
   } finally {
-    rmSync(work, { recursive: true, force: true });
+    if (work) rmSync(work, { recursive: true, force: true });
   }
 }
 
@@ -409,6 +430,7 @@ function shellQuoteArg(value: string): string {
 function rollbackSource(sourceRoot: string, previous: string): void {
   if (!existsSync(previous)) return;
   const failed = `${sourceRoot}.failed`;
+  assertSafeSourceReplacement(sourceRoot, previous, failed);
   rmSync(failed, { recursive: true, force: true });
   if (existsSync(sourceRoot)) renameSync(sourceRoot, failed);
   renameSync(previous, sourceRoot);

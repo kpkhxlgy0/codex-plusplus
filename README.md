@@ -20,8 +20,8 @@ tweaks in a local `tweaks/` folder and loads them when Codex opens.
 The app patch is tiny. Your tweaks, config, logs, backups, and runtime files
 stay outside the app bundle, so you can edit tweaks without rebuilding Codex.
 
-When Codex updates, the patch is usually removed. Codex++ installs a watcher
-that notices this and re-applies the patch.
+When Codex updates, the patch is usually removed. Run `codexplusplus repair`
+to re-apply it, or opt in to the watcher with `codexplusplus install --watcher`.
 
 1.0.0 adds cleaner patching, better debug output, Owl runtime detection,
 browser-host debugging, and native bridge support for AppKit, Metal, helper
@@ -69,6 +69,39 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/kpkhxlgy0/codex-plusplus/master/install.ps1 | iex
 ```
 
+If you already cloned this repository, run its script directly:
+
+```powershell
+# Windows, from the repository root
+.\install.ps1
+```
+
+```bash
+# macOS/Linux, from the repository root
+bash ./install.sh
+```
+
+A script run from a local source tree installs dependencies and rebuilds that tree,
+including your local changes, without downloading or replacing the checkout.
+The script locates the source beside its own file, so an absolute script path also
+works from another directory. If local `npm ci` fails, installation stops and keeps
+your lockfile intact. Dependencies may still require network access.
+Update an existing clone with Git and rerun its local script. Manual and automatic
+source updates protect Git checkouts from replacement; the watcher can still repair
+the installed application when enabled.
+
+The online commands above continue to download GitHub source, even when run from
+inside a checkout. `CODEX_PLUSPLUS_SOURCE_DIR` selects the online installation
+destination only. Online installation refuses to replace Git checkouts, directories
+inside or containing them, linked destinations, or unrelated nonempty directories;
+the same protection applies to the previous-installation backup.
+
+The watcher is disabled by default for both local and online installation.
+To enable it, pass `--watcher` to the local script or run
+`codexplusplus install --watcher`. The existing `--no-watcher` option remains valid.
+Reinstalling without `--watcher` removes a previously configured watcher;
+`codexplusplus repair` preserves the existing watcher choice.
+
 Bun:
 
 ```sh
@@ -89,7 +122,7 @@ It gives you:
 - A runtime that loads renderer and main-process tweaks.
 - A Codex++ Settings section inside Codex.
 - CLI tools for install, repair, update, debug, and tweak development.
-- A watcher that repairs Codex++ after Codex updates.
+- An optional watcher that repairs Codex++ after Codex updates.
 - A public SDK for tweak authors.
 - Native bridge APIs for advanced macOS tweaks.
 
@@ -105,7 +138,7 @@ Install flow:
 3. It patches Codex `app.asar` so a Codex++ loader runs first.
 4. It stages the Codex++ runtime in your user data directory.
 5. It re-signs the app when needed.
-6. It installs a watcher for future Codex updates.
+6. If requested with `--watcher`, it installs a watcher for future Codex updates.
 
 Runtime flow:
 
@@ -123,6 +156,7 @@ Runtime flow:
 | Command | What it does |
 |---|---|
 | `codexplusplus install` | Patch Codex and install the runtime. |
+| `codexplusplus install --watcher` | Install with the optional auto-repair watcher. |
 | `codexplusplus status` | Show installed version and patch state. |
 | `codexplusplus debug` | Show app path, runtime type, paths, open state, and bridge status. |
 | `codexplusplus repair` | Re-apply the patch after an app update or broken install. |

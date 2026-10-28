@@ -124,7 +124,7 @@ prog
   .option("--resign", "Code sign Codex.app on macOS", true)
   .option("--local", "Use a stable local signing identity on macOS")
   .option("--local-signing", "Alias for --local")
-  .option("--watcher", "Install the auto-repair watcher", true)
+  .option("--watcher", "Install the auto-repair watcher", false)
   .option("--verbose", "Show low-level patching details")
   .action(wrap(runInstall));
 

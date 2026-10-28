@@ -4,6 +4,16 @@ All notable changes to codex-plusplus are documented here.
 
 This project uses semver for the installer, runtime, SDK, and published CLI package. Tweak authors should also use semver release tags so the manager can compare installed and available versions.
 
+## 1.0.8
+
+Release notes: [docs/releases/1.0.8.md](docs/releases/1.0.8.md)
+
+- Install directly from an existing local source tree when running its PowerShell or Bash script, rebuilding local changes without downloading a replacement.
+- Keep piped online installs on the GitHub download path while protecting existing Git checkouts, linked destinations, unrelated directories, and previous-installation backups.
+- Preserve local lockfiles on dependency failures, relative installer arguments, and the invoking user's build ownership under sudo.
+- Protect local checkouts and backup directories from manual and automatic source replacement while keeping application repair available.
+- Make the watcher opt-in with `--watcher`; default installs do not enable it, and `--no-watcher` remains supported.
+
 ## 1.0.7
 
 Release notes: [docs/releases/1.0.7.md](docs/releases/1.0.7.md)
