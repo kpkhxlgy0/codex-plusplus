@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-10-27T17:58:01.340Z",
+  "generatedAt": "2026-10-27T17:58:01.34Z",
   "entries": [
     {
       "id": "co.sakushi.add-project-by-path",
@@ -78,7 +78,7 @@
       },
       "repo": "b-nnett/codex-plusplus-better-browser",
       "approvedCommitSha": "dfcc75ec0d8e980698974a3a2b80531cd553af77",
-      "approvedAt": "2026-05-02T16:50:54+09:00",
+      "approvedAt": "2026-05-02T15:50:54+08:00",
       "approvedBy": "bennett"
     },
     {
@@ -162,7 +162,7 @@
       },
       "repo": "b-nnett/codex-plusplus-tab-switcher",
       "approvedCommitSha": "97b1226fb264dfebe7dbf5286497b99613981287",
-      "approvedAt": "2026-04-29T12:30:38+09:00",
+      "approvedAt": "2026-04-29T11:30:38+08:00",
       "approvedBy": "bennett"
     },
     {
@@ -239,7 +239,7 @@
       },
       "repo": "b-nnett/codex-plusplus-keyboard-shortcuts",
       "approvedCommitSha": "2fa2e5beeda1766b53288a6e28662443889e1f5b",
-      "approvedAt": "2026-05-01T13:10:25+09:00",
+      "approvedAt": "2026-05-01T12:10:25+08:00",
       "approvedBy": "bennett"
     },
     {
@@ -324,7 +324,7 @@
       },
       "repo": "b-nnett/codex-plusplus-file-editor",
       "approvedCommitSha": "672e21d955b636ec88c6e8c67de5431341f146dc",
-      "approvedAt": "2026-05-02T22:25:48+09:00",
+      "approvedAt": "2026-05-02T21:25:48+08:00",
       "approvedBy": "bennett"
     },
     {
@@ -474,7 +474,7 @@
       },
       "repo": "b-nnett/codex-plusplus-project-home",
       "approvedCommitSha": "1d97062f707caafdac5ed2af8bd9a986341dc912",
-      "approvedAt": "2026-04-30T20:44:58+09:00",
+      "approvedAt": "2026-04-30T19:44:58+08:00",
       "approvedBy": "bennett"
     },
     {
@@ -562,7 +562,7 @@
       },
       "repo": "b-nnett/codex-plusplus-windows-computer-use",
       "approvedCommitSha": "1bb59c73f16f2ec3c3797168163d48d759eac706",
-      "approvedAt": "2026-05-02T10:11:36+09:00",
+      "approvedAt": "2026-05-02T09:11:36+08:00",
       "approvedBy": "bennett",
       "platforms": [
         "win32"
@@ -573,11 +573,11 @@
       "manifest": {
         "id": "com.kpk.session-stats",
         "name": "Session Stats",
-        "version": "0.4.2",
+        "version": "0.5.0",
         "githubRepo": "kpkhxlgy0/session-stats",
         "homepage": "https://github.com/kpkhxlgy0/session-stats",
         "iconUrl": "https://raw.githubusercontent.com/kpkhxlgy0/session-stats/v0.1.0/icon.svg",
-        "description": "会话底部显示轮次、模型调用次数、跨轮累计平均 TPS、累计 Token 和缓存命中率。",
+        "description": "会话底部及子代理详情面板显示轮次、模型调用次数、平均 TPS、累计 Token 和缓存命中率。",
         "author": "kpkhxlgy0",
         "scope": "both",
         "main": "index.js",
@@ -593,11 +593,11 @@
         ]
       },
       "repo": "kpkhxlgy0/session-stats",
-      "approvedCommitSha": "1ea95b261e6756b80cd3434b5bbf6d4dc5de32e2",
-      "approvedAt": "2026-10-27T17:58:01.340Z",
+      "approvedCommitSha": "0ee82a31a3805d694d4c96a51c18796f69bd4797",
+      "approvedAt": "2026-10-28T13:12:48.9531676Z",
       "approvedBy": "kpkhxlgy0",
-      "releaseUrl": "https://github.com/kpkhxlgy0/session-stats/releases/tag/v0.4.2",
-      "reviewUrl": "https://github.com/kpkhxlgy0/session-stats/commit/1ea95b261e6756b80cd3434b5bbf6d4dc5de32e2"
+      "releaseUrl": "https://github.com/kpkhxlgy0/session-stats/releases/tag/v0.5.0",
+      "reviewUrl": "https://github.com/kpkhxlgy0/session-stats/commit/0ee82a31a3805d694d4c96a51c18796f69bd4797"
     }
   ]
 }
