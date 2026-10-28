@@ -19,6 +19,14 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Normalize Windows temporary path
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $nativeTemp = node -e 'process.stdout.write(require("node:fs").realpathSync.native(require("node:os").tmpdir()))'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "TEMP=$nativeTemp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TMP=$nativeTemp" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - run: npm ci
       - run: npm test
       - run: npm run build

@@ -38,7 +38,7 @@ function sourceTree(path: string, marker: string, git = false) {
 }
 
 function fixture() {
-  const root = realpathSync(mkdtempSync(join(tmpdir(), "codex-plusplus-bootstrap-sh-")));
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "codex-plusplus-bootstrap-sh-")));
   const local = join(root, "local");
   const home = join(root, "home");
   const cwd = join(root, "elsewhere");
@@ -109,7 +109,7 @@ if (command === "boundary") {
     root, local, home, cwd, run, platformOverride,
     events: (): Event[] => existsSync(events) ? readFileSync(events, "utf8").trim().split("\n").map((line) => JSON.parse(line)).filter((event) => event.command !== "boundary") : [],
     cleanup: () => {
-      assert.ok(root.startsWith(join(realpathSync(tmpdir()), "codex-plusplus-bootstrap-sh-")));
+      assert.ok(root.startsWith(join(realpathSync.native(tmpdir()), "codex-plusplus-bootstrap-sh-")));
       rmSync(root, { recursive: true, force: true });
     },
   };
