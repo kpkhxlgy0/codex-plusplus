@@ -25,10 +25,10 @@ function createInjectorFixture(
   const nativeContent = `<div id="native-general" style="display:flex">Native General</div>`;
   const sidebarButtons = layout === "modern"
     ? `<button id="native-general-nav" class="sidebar-item bg-primary-ghost-hover" aria-current="page">
-         <div class="text-emphasis"><span class="text-codex-icon-active">G</span><span>General</span></div>
+         <div class="text-emphasis"><span class="text-codex-icon-active"></span><span>General</span></div>
        </button>
        <button class="sidebar-item hover:bg-primary-ghost-hover data-[state=open]:bg-primary-ghost-hover">
-         <div class="text-default"><span>A</span><span>Appearance</span></div>
+         <div class="text-default"><span></span><span>Appearance</span></div>
        </button><button>Git</button>`
     : `<button>General</button><button>Appearance</button><button>Git</button>`;
   const content = layout === "modern"
@@ -169,7 +169,7 @@ test("legacy native selection classes return after a custom page", async () => {
     native.classList.add("bg-token-list-hover-background");
     native.setAttribute("aria-current", "page");
     native.innerHTML = `<div class="text-token-list-active-selection-foreground">
-      <span class="text-token-list-active-selection-icon-foreground">G</span><span>General</span>
+      <span class="text-token-list-active-selection-icon-foreground"></span><span>General</span>
     </div>`;
     f.injector.startSettingsInjector();
     const config = f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!;
@@ -686,6 +686,114 @@ test("settings-like controls inside a composer overlay never receive injected gr
     assert.equal(f.logs.filter((line) => line.includes("nav group injected")).length, 0);
   } catch (error) {
     throw new Error(String(error), { cause: error });
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("home navigation and nested chat titles never receive Settings groups", async () => {
+  for (const titles of ["General discussion|Configuration guide|Git notes", "General|Appearance|Git"]) {
+    const f = createInjectorFixture("", "modern");
+    try {
+      const sidebar = f.window.document.getElementById("sidebar")!;
+      sidebar.innerHTML = '<button>New chat</button><button>Search</button><div id="chat-list"></div>';
+      for (const title of titles.split("|")) {
+        const link = f.window.document.createElement("a");
+        link.textContent = title;
+        sidebar.querySelector("#chat-list")!.appendChild(link);
+      }
+      (sidebar.querySelector("#chat-list") as HTMLElement).getBoundingClientRect = () =>
+        new f.window.DOMRect(0, 80, 300, 500);
+      f.injector.startSettingsInjector();
+      await f.settle();
+      assert.equal(f.window.document.querySelector('[data-codexpp="nav-group"]'), null, titles);
+      assert.notEqual(f.window.document.documentElement.dataset.codexppSettingsSurface, "true", titles);
+    } finally {
+      await new Promise<void>((done) => setImmediate(done));
+      f.dom.window.close();
+    }
+  }
+});
+
+test("a rejected outer injection root never marks the page as Settings", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    f.window.document.getElementById("sidebar")!.classList.remove("overflow-y-auto");
+    f.injector.startSettingsInjector();
+    await f.settle();
+    assert.equal(f.window.document.querySelector('[data-codexpp="nav-group"]'), null);
+    assert.notEqual(f.window.document.documentElement.dataset.codexppSettingsSurface, "true");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("returning home with reused Settings DOM removes its UI and disposes the registered page", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    let disposed = 0;
+    f.injector.registerPage("test", { id: "test", name: "Test", version: "1.0.0" }, {
+      id: "test:page", title: "Test page", render: () => () => { disposed++; },
+    });
+    f.injector.startSettingsInjector();
+    const sidebar = f.window.document.getElementById("sidebar")!;
+    f.window.document.querySelector<HTMLButtonElement>('[data-codexpp="nav-page-test:page"]')!.click();
+    const native = f.window.document.getElementById("native-general")!;
+    const sentinel = f.window.document.createElement("div");
+    sentinel.dataset.codexpp = "unrelated-tweak";
+    f.window.document.body.appendChild(sentinel);
+    sidebar.firstElementChild!.innerHTML = '<button>New chat</button><button>Search</button>';
+    f.window.history.pushState({}, "", "/");
+    await f.settle();
+    assert.equal(f.window.document.querySelector('[data-codexpp="nav-group"]'), null);
+    assert.equal(f.window.document.querySelector('[data-codexpp="pages-group"]'), null);
+    assert.equal(f.window.document.querySelector('[data-codexpp="native-nav-header"]'), null);
+    assert.equal(f.window.document.querySelector('[data-codexpp="tweaks-panel"]'), null);
+    assert.equal(native.style.display, "flex");
+    assert.equal(disposed, 1);
+    assert.equal(f.window.document.documentElement.dataset.codexppSettingsSurface, "false");
+    assert.equal(sentinel.isConnected, true);
+    const restores = f.logs.filter((line) => line.includes("restore codex view")).length;
+    sidebar.querySelector<HTMLButtonElement>("button")!.click();
+    await f.settle();
+    assert.equal(f.logs.filter((line) => line.includes("restore codex view")).length, restores);
+    assert.equal(disposed, 1);
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("page text cannot keep a missing Settings surface active", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    f.injector.startSettingsInjector();
+    f.window.document.getElementById("sidebar")!.replaceChildren();
+    f.window.document.getElementById("main-content")!.innerHTML =
+      "<button>General</button><button>Appearance</button><button>Git</button>";
+    await f.settle();
+    await new Promise<void>((done) => f.window.setTimeout(done, 1600));
+    assert.equal(f.window.document.querySelector('[data-codexpp="nav-group"]'), null);
+    assert.equal(f.window.document.documentElement.dataset.codexppSettingsSurface, "false");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("an outer root rejected after mounting cannot keep Settings visible through the hide debounce", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    f.injector.startSettingsInjector();
+    const sidebar = f.window.document.getElementById("sidebar")!;
+    sidebar.classList.remove("overflow-y-auto");
+    sidebar.appendChild(f.window.document.createElement("div"));
+    await f.settle();
+    assert.equal(f.window.document.querySelector('[data-codexpp="nav-group"]'), null);
+    await new Promise<void>((done) => f.window.setTimeout(done, 1600));
+    assert.equal(f.window.document.documentElement.dataset.codexppSettingsSurface, "false");
   } finally {
     await new Promise<void>((done) => setImmediate(done));
     f.dom.window.close();

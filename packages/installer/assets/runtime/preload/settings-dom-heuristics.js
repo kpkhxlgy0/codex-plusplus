@@ -77,32 +77,6 @@ const CODEXPP_EXTENDED_SETTINGS_LABELS = [
     "Plugins",
     "Skills",
 ].map(normalizeCodexPpSettingsLabel);
-const CODEXPP_SETTINGS_ONLY_LABELS = [
-    "General",
-    "常规",
-    "通用",
-    "Appearance",
-    "外观",
-    "Configuration",
-    "配置",
-    "默认权限",
-    "Personalization",
-    "个性化",
-    "Keyboard shortcuts",
-    "Archived chats",
-    "Usage",
-    "Computer use",
-    "Browser use",
-    "MCP servers",
-    "MCP Servers",
-    "MCP 服务器",
-    "Git",
-    "Environments",
-    "环境",
-    "Cloud Environments",
-    "Worktrees",
-    "Connections",
-].map(normalizeCodexPpSettingsLabel);
 const CODEXPP_MAIN_APP_NAV_LABELS = [
     "New chat",
     "Quick chat",
@@ -134,9 +108,24 @@ function codexPpSettingsLabelsFrom(root) {
     const controls = Array.from(root.querySelectorAll("button,a,[role='button'],[role='link']"));
     return [
         ...new Set(controls
+            .filter((el) => isNativeVisibleSettingsControl(el, root))
             .map(codexPpControlLabel)
             .filter(Boolean)),
     ];
+}
+function isNativeVisibleSettingsControl(el, root) {
+    if (el.closest("[data-codexpp],[hidden],[inert],[aria-hidden='true']"))
+        return false;
+    if (!codexPpVisibleBox(el))
+        return false;
+    for (let node = el; node; node = node.parentElement) {
+        const style = getComputedStyle(node);
+        if (style.display === "none" || style.visibility === "hidden" || style.visibility === "collapse")
+            return false;
+        if (node === root)
+            break;
+    }
+    return true;
 }
 function codexPpSettingsLabelScore(labels) {
     const core = new Set();
@@ -154,7 +143,7 @@ function codexPpSettingsLabelScore(labels) {
     return { core: core.size, total: total.size };
 }
 function codexPpLabelMatchesMarker(label, marker) {
-    return label === marker || label.includes(marker);
+    return label === marker;
 }
 function codexPpMarkerCount(labels, markers) {
     const matched = new Set();
@@ -166,11 +155,23 @@ function codexPpMarkerCount(labels, markers) {
     }
     return matched.size;
 }
-function hasCodexPpSettingsOnlySignal(labels) {
-    return codexPpMarkerCount(labels, CODEXPP_SETTINGS_ONLY_LABELS) > 0;
-}
 function hasMainAppSidebarSignals(labels) {
-    return codexPpMarkerCount(labels, CODEXPP_MAIN_APP_NAV_LABELS) >= 2;
+    const hasMainAnchor = labels.some((label) => CODEXPP_MAIN_APP_NAV_LABELS.includes(label) &&
+        !["plugins", "插件", "settings", "设置"].includes(label));
+    return hasMainAnchor && codexPpMarkerCount(labels, CODEXPP_MAIN_APP_NAV_LABELS) >= 2;
+}
+function isInMainAppSidebar(el, labels) {
+    if (hasMainAppSidebarSignals(labels))
+        return true;
+    // Chat lists can resemble settings on their own. Keep their native navigation
+    // ancestors in scope without inspecting unrelated app navigation elsewhere.
+    let nav = el.parentElement?.closest("nav,aside,[role='navigation']") ?? null;
+    while (nav) {
+        if (hasMainAppSidebarSignals(codexPpSettingsLabelsFrom(nav)))
+            return true;
+        nav = nav.parentElement?.closest("nav,aside,[role='navigation']") ?? null;
+    }
+    return false;
 }
 function isCodexPpSettingsLabelSet(labels) {
     const score = codexPpSettingsLabelScore(labels);
@@ -224,9 +225,8 @@ function isSettingsSidebarCandidate(el) {
     if (rect.left > window.innerWidth * 0.65)
         return false;
     const labels = codexPpSettingsLabelsFrom(el);
-    if (hasMainAppSidebarSignals(labels) && !hasCodexPpSettingsOnlySignal(labels)) {
+    if (isInMainAppSidebar(el, labels))
         return false;
-    }
     return isCodexPpSettingsLabelSet(labels);
 }
 //# sourceMappingURL=settings-dom-heuristics.js.map

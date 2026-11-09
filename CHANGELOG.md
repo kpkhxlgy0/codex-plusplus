@@ -4,6 +4,14 @@ All notable changes to codex-plusplus are documented here.
 
 This project uses semver for the installer, runtime, SDK, and published CLI package. Tweak authors should also use semver release tags so the manager can compare installed and available versions.
 
+## 1.0.9
+
+Release notes: [docs/releases/1.0.9.md](docs/releases/1.0.9.md)
+
+- Keep Codex++ navigation inside Settings when home-page chat titles contain native Settings labels.
+- Clear injected Settings groups, active pages, and registered tweak resources when leaving Settings, while restoring native content and selection.
+- Cover exact visible labels, main-navigation rejection, route changes, and delayed cleanup with Settings regressions.
+
 ## 1.0.8
 
 Release notes: [docs/releases/1.0.8.md](docs/releases/1.0.8.md)

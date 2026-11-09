@@ -120,6 +120,8 @@ function startSettingsInjector() {
 function onNav() {
     state.fingerprint = null;
     runInjectAndDump();
+    if (!state.sidebarRoot)
+        setSettingsSurfaceVisible(false, "navigation-left-settings");
 }
 function runInjectAndDump() {
     if (scheduledInjectFrame !== null) {
@@ -227,24 +229,18 @@ function tryInject() {
     removeMisplacedSettingsGroups();
     const itemsGroup = findSidebarItemsGroup();
     if (!itemsGroup) {
-        if (state.activePage && (!state.sidebarRoot?.isConnected || !state.contentHost?.isConnected)) {
-            restoreCodexView();
-        }
+        clearSettingsUi();
         scheduleSettingsSurfaceHidden();
         logSidebarMissing();
         return;
     }
     lastSidebarMissingLogAt = 0;
-    if (state.settingsSurfaceHideTimer) {
-        clearTimeout(state.settingsSurfaceHideTimer);
-        state.settingsSurfaceHideTimer = null;
-    }
-    setSettingsSurfaceVisible(true, "sidebar-found");
     // Codex's native settings groups live inside the scrollable nav stack. If we
     // append outside that stack, the flex-1 scroller pushes Codex++ to the bottom
     // of the sidebar and creates a large visual gap after the last native group.
     const outer = findSidebarInjectionRoot(itemsGroup);
     if (!(0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(itemsGroup) || !(0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(outer)) {
+        clearSettingsUi();
         scheduleSettingsSurfaceHidden();
         plog("rejected non-settings sidebar candidate", {
             itemsGroup: describe(itemsGroup),
@@ -252,6 +248,11 @@ function tryInject() {
         });
         return;
     }
+    if (state.settingsSurfaceHideTimer) {
+        clearTimeout(state.settingsSurfaceHideTimer);
+        state.settingsSurfaceHideTimer = null;
+    }
+    setSettingsSurfaceVisible(true, "sidebar-found");
     if (state.activePage && (state.sidebarRoot !== outer || state.contentHost !== findContentArea())) {
         restoreCodexView();
     }
@@ -404,6 +405,34 @@ function removeSettingsGroupsOutsideRoot(root) {
         group.remove();
     }
 }
+function clearSettingsUi() {
+    const panel = state.panelHost;
+    if (state.activePage || state.contentHost || state.sidebarRestoreHandler || state.nativeNavSelection.size) {
+        restoreCodexView();
+    }
+    panel?.remove();
+    for (const page of state.pages.values()) {
+        try {
+            page.teardown?.();
+        }
+        catch (error) {
+            plog("page teardown failed", { id: page.id, err: String(error) });
+        }
+        page.teardown = null;
+        page.navButton = null;
+    }
+    for (const group of Array.from(document.querySelectorAll("[data-codexpp='nav-group'], [data-codexpp='pages-group'], " +
+        "[data-codexpp='native-nav-header'], [data-codexpp='tweaks-panel']")))
+        group.remove();
+    state.sidebarRoot = null;
+    state.outerWrapper = null;
+    state.nativeNavHeader = null;
+    state.navGroup = null;
+    state.navButtons = null;
+    state.codexPlusPlusUpdateButton = null;
+    state.pagesGroup = null;
+    state.pagesGroupKey = null;
+}
 function sidebarGroupHeader(text, trailing) {
     const header = document.createElement("div");
     header.className = "flex items-center justify-between gap-2 pr-0.5 pl-2 select-none";
@@ -431,15 +460,11 @@ function scheduleSettingsSurfaceHidden() {
     state.settingsSurfaceHideTimer = setTimeout(() => {
         state.settingsSurfaceHideTimer = null;
         const sidebar = findSidebarItemsGroup();
-        if (sidebar && (0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(sidebar))
-            return;
-        if (isSettingsTextVisible())
+        if (sidebar && (0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(sidebar)
+            && (0, settings_dom_heuristics_1.isSettingsSidebarCandidate)(findSidebarInjectionRoot(sidebar)))
             return;
         setSettingsSurfaceVisible(false, "sidebar-not-found");
     }, 1500);
-}
-function isSettingsTextVisible() {
-    return (0, settings_dom_heuristics_1.isCodexPpSettingsLabelSet)((0, settings_dom_heuristics_1.codexPpSettingsLabelsFrom)(document));
 }
 function setSettingsSurfaceVisible(visible, reason) {
     if (state.settingsSurfaceVisible === visible)
@@ -2535,6 +2560,11 @@ function removeMisplacedSettingsGroups() {
     for (const group of Array.from(groups)) {
         if (isCodexPpInjectedSettingsGroupPlacementValid(group))
             continue;
+        if (group === state.navGroup || group === state.pagesGroup || group === state.nativeNavHeader
+            || state.sidebarRoot?.contains(group)) {
+            clearSettingsUi();
+            return;
+        }
         resetCodexPpInjectedSettingsGroupState(group);
         group.remove();
     }
