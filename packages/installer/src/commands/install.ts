@@ -26,6 +26,7 @@ import { chownForTargetUser } from "../ownership.js";
 import { getOpenReport, type OpenReport } from "./debug.js";
 import { openCodex, quitCodex } from "../alerts.js";
 import { installWindowsManagedAppLauncher } from "../windows-launcher.js";
+import { cleanupOldWindowsMirrors } from "../windows-mirror-cleanup.js";
 
 interface Opts {
   app?: string;
@@ -212,6 +213,7 @@ export async function install(opts: Opts = {}): Promise<void> {
     openCodex(codex.appRoot, { detached: true, delayMs: 1_000 });
     step("Codex reopened");
   }
+  cleanupOldWindowsMirrors({ appRoot: codex.appRoot, stateFile: paths.stateFile, quiet: opts.quiet });
 
   if (!opts.quiet) {
     console.log();

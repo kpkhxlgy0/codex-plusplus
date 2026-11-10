@@ -215,6 +215,12 @@ On Windows Store installs, Codex++ also creates a writable managed app copy
 under `%LOCALAPPDATA%/codex-plusplus/store-apps/`. Use the Codex++ shortcut for
 that copy.
 
+After a successful Windows Store install or repair, Codex++ automatically removes unused older mirrors of the
+same package family and architecture. It keeps the current version, mirrors referenced by running processes,
+newer versions, and unrecognized directories. Cleanup is skipped when the current state, process inventory or
+directory boundaries cannot be verified; cleanup errors are reported without undoing a successful upgrade.
+Runtime files, tweaks and recovery backups remain in the user-data directory.
+
 The Windows launcher reads the current install state and starts the mirror with
 the matching installed package identity. `install` and `repair` refresh the
 launcher, command shim, and shortcuts, including when the app patch is already

@@ -77,6 +77,10 @@ function installerFixture(previousWatcher?: WatcherKind) {
     "../version.js": { CODEX_PLUSPLUS_VERSION: "1.0.8" },
     "../source-root.js": { findSourceRoot: () => "/fixture/source" },
     "../windows-launcher.js": { installWindowsManagedAppLauncher: () => null },
+    "../windows-mirror-cleanup.js": { cleanupOldWindowsMirrors: () => {
+      assert.ok(saved, "cleanup must run after installation state has been persisted");
+      return { removed: [], retained: [], planned: [], warnings: [] };
+    } },
   };
   const installer = loadModule("commands/install.ts", {
     ...common,

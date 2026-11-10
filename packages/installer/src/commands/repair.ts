@@ -24,6 +24,7 @@ import {
 } from "../alerts.js";
 import { fileURLToPath } from "node:url";
 import { installWindowsManagedAppLauncher } from "../windows-launcher.js";
+import { cleanupOldWindowsMirrors } from "../windows-mirror-cleanup.js";
 
 interface Opts {
   app?: string;
@@ -103,11 +104,13 @@ export async function repair(opts: Opts = {}): Promise<void> {
         stageAssets(paths.runtime);
         writeState(paths.stateFile, {
           ...state,
+          appRoot: codex.appRoot,
           watcher,
           version: CODEX_PLUSPLUS_VERSION,
           sourceRoot,
           runtimeUpdatedAt: new Date().toISOString(),
         });
+        cleanupOldWindowsMirrors({ appRoot: codex.appRoot, stateFile: paths.stateFile, quiet: opts.quiet });
         if (!opts.quiet) {
           console.log(kleur.green("Codex++ runtime assets refreshed."));
         }
@@ -124,11 +127,13 @@ export async function repair(opts: Opts = {}): Promise<void> {
         stageAssets(paths.runtime);
         writeState(paths.stateFile, {
           ...state,
+          appRoot: codex.appRoot,
           watcher,
           version: CODEX_PLUSPLUS_VERSION,
           sourceRoot,
           runtimeUpdatedAt: new Date().toISOString(),
         });
+        cleanupOldWindowsMirrors({ appRoot: codex.appRoot, stateFile: paths.stateFile, quiet: opts.quiet });
         if (!opts.quiet) {
           console.log(
             kleur.green(`Updated Codex++ runtime ${state.version} → ${CODEX_PLUSPLUS_VERSION}.`),
@@ -139,7 +144,8 @@ export async function repair(opts: Opts = {}): Promise<void> {
         }
         return;
       }
-      writeState(paths.stateFile, { ...state, watcher, sourceRoot });
+      writeState(paths.stateFile, { ...state, appRoot: codex.appRoot, watcher, sourceRoot });
+      cleanupOldWindowsMirrors({ appRoot: codex.appRoot, stateFile: paths.stateFile, quiet: opts.quiet });
       if (!opts.quiet) console.log(kleur.green("Patch already intact."));
       return;
     }
