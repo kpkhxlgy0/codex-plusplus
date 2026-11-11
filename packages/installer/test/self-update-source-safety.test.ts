@@ -19,6 +19,8 @@ function sourceTree(root: string, marker: string): void {
     writeFileSync(join(root, file), "// inert source fixture\n");
   }
   writeFileSync(join(root, "package.json"), JSON.stringify({ name: "codex-plusplus", version: "999.0.0", workspaces: ["packages/*"] }));
+  const { version } = JSON.parse(readFileSync(join(repoRoot, "packages/installer/package.json"), "utf8"));
+  writeFileSync(join(root, "packages/installer/package.json"), JSON.stringify({ version }));
   writeFileSync(join(root, "marker.txt"), marker);
   mkdirSync(join(root, "packages/installer/dist"), { recursive: true });
   writeFileSync(join(root, "packages/installer/dist/cli.js"), `

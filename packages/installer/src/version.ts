@@ -1,4 +1,7 @@
-export const CODEX_PLUSPLUS_VERSION = "1.0.10";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+export const CODEX_PLUSPLUS_VERSION: string = require("../package.json").version;
 
 const SEMVER_RE = /^v?(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/;
 
