@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-16T15:44:22.683Z",
+  "generatedAt": "2026-11-16T17:31:16.558Z",
   "entries": [
     {
       "id": "co.sakushi.add-project-by-path",
@@ -604,10 +604,10 @@
       "manifest": {
         "id": "com.kpk.daily-usage",
         "name": "Daily Usage",
-        "version": "0.1.2",
+        "version": "0.1.3",
         "githubRepo": "kpkhxlgy0/daily-usage",
         "homepage": "https://github.com/kpkhxlgy0/daily-usage",
-        "iconUrl": "https://raw.githubusercontent.com/kpkhxlgy0/daily-usage/v0.1.2/icon.svg",
+        "iconUrl": "https://raw.githubusercontent.com/kpkhxlgy0/daily-usage/v0.1.3/icon.svg",
         "description": "按北京时间统计本机和 Remote Control 机器的每日 Token 与 API 等值美元。",
         "author": "kpkhxlgy0",
         "scope": "both",
@@ -626,11 +626,11 @@
         ]
       },
       "repo": "kpkhxlgy0/daily-usage",
-      "approvedCommitSha": "d330c2c7e168062e7154c6a95ce52a4a190bad4e",
-      "approvedAt": "2026-11-16T15:44:22.683Z",
+      "approvedCommitSha": "b1497a01106747d5bacd20d8014815659b47be6a",
+      "approvedAt": "2026-11-16T17:31:16.558Z",
       "approvedBy": "kpkhxlgy0",
-      "releaseUrl": "https://github.com/kpkhxlgy0/daily-usage/releases/tag/v0.1.2",
-      "reviewUrl": "https://github.com/kpkhxlgy0/daily-usage/commit/d330c2c7e168062e7154c6a95ce52a4a190bad4e"
+      "releaseUrl": "https://github.com/kpkhxlgy0/daily-usage/releases/tag/v0.1.3",
+      "reviewUrl": "https://github.com/kpkhxlgy0/daily-usage/commit/b1497a01106747d5bacd20d8014815659b47be6a"
     }
   ]
 }
