@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-11-16T20:03:59.499Z",
+  "generatedAt": "2026-11-17T06:21:38.699Z",
   "entries": [
     {
       "id": "co.sakushi.add-project-by-path",
@@ -604,7 +604,7 @@
       "manifest": {
         "id": "com.kpk.daily-usage",
         "name": "Daily Usage",
-        "version": "0.1.4",
+        "version": "0.1.6",
         "githubRepo": "kpkhxlgy0/daily-usage",
         "homepage": "https://github.com/kpkhxlgy0/daily-usage",
         "iconUrl": "./icon.svg",
@@ -626,11 +626,11 @@
         ]
       },
       "repo": "kpkhxlgy0/daily-usage",
-      "approvedCommitSha": "f6698870e0807f56a08a77dc33176ff2daf0feec",
-      "approvedAt": "2026-11-16T20:03:59.499Z",
+      "approvedCommitSha": "1502299f1e853bb87b5782314233bdd9f2004fdf",
+      "approvedAt": "2026-11-17T06:21:38.699Z",
       "approvedBy": "kpkhxlgy0",
-      "releaseUrl": "https://github.com/kpkhxlgy0/daily-usage/releases/tag/v0.1.4",
-      "reviewUrl": "https://github.com/kpkhxlgy0/daily-usage/commit/f6698870e0807f56a08a77dc33176ff2daf0feec"
+      "releaseUrl": "https://github.com/kpkhxlgy0/daily-usage/releases/tag/v0.1.6",
+      "reviewUrl": "https://github.com/kpkhxlgy0/daily-usage/commit/1502299f1e853bb87b5782314233bdd9f2004fdf"
     }
   ]
 }
