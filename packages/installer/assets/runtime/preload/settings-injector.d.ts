@@ -1,9 +1,8 @@
 /**
  * Settings injector for Codex's Settings page.
  *
- * Codex's settings is a routed page (URL stays at `/index.html?hostId=local`)
- * NOT a modal dialog. The sidebar is a grouped settings nav (Personal,
- * Integrations, Coding, Archived) with native section headers above stacks of
+ * Codex's settings can be a routed page or a modal dialog. The sidebar is a
+ * grouped settings nav (Personal, Integrations, Coding, Archived) with native section headers above stacks of
  * buttons. There are no stable `role` / `aria-label` / `data-testid` hooks on
  * the shell so we identify the sidebar by text-content match against known item
  * labels (General, Appearance, Configuration, …).

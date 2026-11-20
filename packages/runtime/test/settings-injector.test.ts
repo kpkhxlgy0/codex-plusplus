@@ -18,12 +18,12 @@ const injectorCode = buildSync({
 // Electron IPC need substitutes in Node. Each fixture gets a fresh module state.
 function createInjectorFixture(
   wrapper = "",
-  layout: "empty" | "modern" | "legacy" = "empty",
+  layout: "empty" | "modern" | "legacy" | "dialog" = "empty",
   mainWidth = 700,
   invokeOverride?: (channel: string, ...args: unknown[]) => Promise<unknown>,
 ) {
   const nativeContent = `<div id="native-general" style="display:flex">Native General</div>`;
-  const sidebarButtons = layout === "modern"
+  const sidebarButtons = layout === "modern" || layout === "dialog"
     ? `<button id="native-general-nav" class="sidebar-item bg-primary-ghost-hover" aria-current="page">
          <div class="text-emphasis"><span class="text-codex-icon-active"></span><span>General</span></div>
        </button>
@@ -39,7 +39,20 @@ function createInjectorFixture(
        <main data-app-shell-main-surface="default"><div id="main-content" data-app-shell-focus-area="main">
          ${nativeContent}
        </div></main>`
-    : `<nav id="sidebar" class="overflow-y-auto vertical-scroll-fade-mask">
+    : layout === "dialog"
+      ? `<div class="flex min-h-0 flex-1">
+         <div class="settings-dialog-sidebar"><nav aria-label="Settings"><div class="flex flex-col">
+           <header>Settings</header>
+           <div id="sidebar" class="settings-dialog-nav-list overflow-y-auto" data-settings-nav-scroll-container>
+             <div>${sidebarButtons}</div>
+             <div class="text-token-text-secondary">Integrations</div>
+           </div>
+         </div></nav></div>
+         <div id="main-content" data-settings-panel>
+           <div id="native-general" class="settings-dialog-content" style="display:flex">Native General</div>
+         </div>
+       </div>`
+      : `<nav id="sidebar" class="overflow-y-auto vertical-scroll-fade-mask">
          <div>${sidebarButtons}</div>
        </nav>${layout === "legacy" ? `<div id="main-content">${nativeContent}</div>` : ""}`;
   const dom = new JSDOM(`<!doctype html><html><head><style>
@@ -55,13 +68,23 @@ function createInjectorFixture(
     .h-5 { height: 20px; } .w-8 { width: 32px; }
     .h-4 { height: 16px; } .w-4 { width: 16px; }
   </style></head><body>
-    <section ${layout === "modern" ? 'data-app-shell-workspace-row="true"' : ""} ${wrapper}>${content}</section>
-  </body></html>`, { url: "https://codex.test/settings", runScripts: "outside-only" });
+    ${layout === "dialog" ? `<section data-app-shell-workspace-row="true">
+      <nav><button>New chat</button><button>Search</button></nav>
+      <main data-app-shell-main-surface="default"><div id="home-content" data-app-shell-focus-area="main"
+        data-settings-panel><div class="settings-dialog-content" style="display:grid">Home</div></div></main>
+    </section>` : ""}
+    <section ${layout === "modern" ? 'data-app-shell-workspace-row="true"' : ""}
+      ${layout === "dialog" ? 'class="settings-dialog" role="dialog" aria-label="Settings"' : ""}
+      ${wrapper}>${content}</section>
+  </body></html>`, {
+    url: layout === "dialog" ? "https://codex.test/" : "https://codex.test/settings",
+    runScripts: "outside-only",
+  });
   const { window } = dom;
   window.HTMLElement.prototype.getBoundingClientRect = function () {
     const width = this.id === "background" ? 900 : this.id === "narrow-native" ? 240 :
       this.id === "main-content" ? mainWidth :
-      this.id === "sidebar" ? 300 : 700;
+      this.closest(".settings-dialog-sidebar") ? 280 : this.id === "sidebar" ? 300 : 700;
     return new window.DOMRect(0, 0, width, this.id === "sidebar" ? 640 : 400);
   };
   const frames = new Map<number, FrameRequestCallback>();
@@ -341,6 +364,140 @@ test("all built-in and registered pages reuse the visible host and restore nativ
   } finally {
     await new Promise<void>((done) => setImmediate(done));
     f.dom.window.close();
+  }
+});
+
+test("settings dialog mounts each Codex++ page in its own native panel and restores General", async () => {
+  const f = createInjectorFixture("", "dialog");
+  try {
+    f.injector.registerPage("test", { id: "test", name: "Test", version: "1.0.0" }, {
+      id: "test:page", title: "Test page", render: (root: HTMLElement) => { root.textContent = "Test content"; },
+    });
+    f.injector.startSettingsInjector();
+    const dialog = f.window.document.querySelector('[role="dialog"]')!;
+    const content = dialog.querySelector("[data-settings-panel]")!;
+    const native = dialog.querySelector<HTMLElement>("#native-general")!;
+    const general = dialog.querySelector<HTMLButtonElement>("#native-general-nav")!;
+    const home = f.window.document.getElementById("home-content")!;
+    const homeMarkup = home.innerHTML;
+
+    for (const [selector, visibleText] of [
+      ["nav-config", "Codex++ Updates"],
+      ["nav-tweaks", "Installed Tweaks"],
+      ["nav-tweak store", "Publish Tweak"],
+      ["nav-page-test:page", "Test content"],
+    ]) {
+      const button = dialog.querySelector<HTMLButtonElement>(`[data-codexpp="${selector}"]`);
+      assert.ok(button, selector);
+      button.click();
+      await f.settle();
+      const panels = f.window.document.querySelectorAll<HTMLElement>('[data-codexpp="tweaks-panel"]');
+      assert.equal(panels.length, 1, selector);
+      assert.equal(panels[0]!.parentElement, content, selector);
+      assert.equal(panels[0]!.style.display, "block", selector);
+      assert.ok(panels[0]!.textContent?.includes(visibleText), selector);
+      assert.equal(native.style.display, "none");
+      assert.equal(button.getAttribute("aria-current"), "page");
+      assert.equal(general.getAttribute("aria-current"), null);
+      assert.equal(home.innerHTML, homeMarkup);
+    }
+
+    general.click();
+    assert.equal(native.style.display, "flex");
+    assert.equal(general.getAttribute("aria-current"), "page");
+    assert.equal(content.querySelector<HTMLElement>('[data-codexpp="tweaks-panel"]')!.style.display, "none");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("closing and reopening the settings dialog clears its active Codex++ page", async () => {
+  const f = createInjectorFixture("", "dialog");
+  try {
+    let disposed = 0;
+    f.injector.registerPage("test", { id: "test", name: "Test", version: "1.0.0" }, {
+      id: "test:page", title: "Test page", render: (root: HTMLElement) => {
+        root.textContent = "Test content";
+        return () => { disposed++; };
+      },
+    });
+    const document = f.window.document;
+    const dialog = document.querySelector('[role="dialog"]')!;
+    const reopened = dialog.cloneNode(true) as HTMLElement;
+    const home = document.querySelector("[data-app-shell-workspace-row]")!;
+    const homeMarkup = home.innerHTML;
+    const native = dialog.querySelector<HTMLElement>("#native-general")!;
+    const registeredPage = '[data-codexpp="nav-page-test:page"]';
+    const panel = '[data-codexpp="tweaks-panel"]';
+    f.injector.startSettingsInjector();
+    dialog.querySelector<HTMLButtonElement>(registeredPage)!.click();
+    assert.equal(native.style.display, "none");
+    assert.ok(dialog.querySelector(panel)?.textContent?.includes("Test content"));
+
+    dialog.remove();
+    await f.settle();
+    assert.equal(native.style.display, "flex");
+    assert.equal(dialog.querySelector(panel), null);
+    assert.equal(disposed, 1);
+    assert.equal(document.querySelector('[data-codexpp="nav-group"]'), null);
+    assert.equal(home.innerHTML, homeMarkup);
+
+    document.body.appendChild(reopened);
+    await f.settle();
+    const page = reopened.querySelector<HTMLButtonElement>(registeredPage);
+    assert.ok(page);
+    assert.equal(page.getAttribute("aria-current"), null);
+    assert.equal(reopened.querySelector(panel), null);
+    assert.equal(reopened.querySelector<HTMLElement>("#native-general")!.style.display, "flex");
+    page.click();
+    assert.ok(reopened.querySelector(panel)?.textContent?.includes("Test content"));
+    assert.equal(disposed, 1);
+    assert.equal(home.innerHTML, homeMarkup);
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("settings dialog rejects invalid content without mounting in another dialog or the background", async () => {
+  for (const invalid of ["hidden", "inert", "missing", "ambiguous", "nested-sidebar"] as const) {
+    const f = createInjectorFixture("", "dialog");
+    try {
+      const document = f.window.document;
+      const dialog = document.querySelector('[role="dialog"]')!;
+      const content = document.getElementById("main-content")!;
+      const home = document.getElementById("home-content")!;
+      dialog.insertAdjacentHTML("beforeend", `<div class="settings-dialog" role="dialog" aria-label="Other dialog">
+        <div data-settings-panel><div class="settings-dialog-content" style="display:grid">Other dialog</div></div>
+      </div>`);
+      const otherDialog = dialog.querySelector('[aria-label="Other dialog"]')!;
+      const outsideMarkup = [home.innerHTML, otherDialog.innerHTML];
+      if (invalid === "hidden") content.hidden = true;
+      if (invalid === "inert") content.setAttribute("inert", "");
+      if (invalid === "missing") content.removeAttribute("data-settings-panel");
+      if (invalid === "ambiguous") {
+        content.insertAdjacentHTML("afterend", '<div data-settings-panel><div>Another panel</div></div>');
+      }
+      if (invalid === "nested-sidebar") {
+        const sidebar = document.getElementById("sidebar")!;
+        const nestedDialog = document.createElement("div");
+        nestedDialog.setAttribute("role", "dialog");
+        sidebar.before(nestedDialog);
+        nestedDialog.appendChild(sidebar);
+      }
+
+      f.injector.startSettingsInjector();
+      dialog.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!.click();
+      await f.settle();
+      assert.equal(document.querySelector('[data-codexpp="tweaks-panel"]'), null, invalid);
+      assert.equal(document.getElementById("native-general")!.style.display, "flex", invalid);
+      assert.deepEqual([home.innerHTML, otherDialog.innerHTML], outsideMarkup, invalid);
+      assert.ok(f.logs.some((line) => line.includes("content area rejected")), invalid);
+    } finally {
+      await new Promise<void>((done) => setImmediate(done));
+      f.dom.window.close();
+    }
   }
 });
 

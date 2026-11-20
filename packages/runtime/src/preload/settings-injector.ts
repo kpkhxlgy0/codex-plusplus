@@ -1,9 +1,8 @@
 /**
  * Settings injector for Codex's Settings page.
  *
- * Codex's settings is a routed page (URL stays at `/index.html?hostId=local`)
- * NOT a modal dialog. The sidebar is a grouped settings nav (Personal,
- * Integrations, Coding, Archived) with native section headers above stacks of
+ * Codex's settings can be a routed page or a modal dialog. The sidebar is a
+ * grouped settings nav (Personal, Integrations, Coding, Archived) with native section headers above stacks of
  * buttons. There are no stable `role` / `aria-label` / `data-testid` hooks on
  * the shell so we identify the sidebar by text-content match against known item
  * labels (General, Appearance, Configuration, …).
@@ -3024,6 +3023,25 @@ function resetCodexPpInjectedSettingsGroupState(group: HTMLElement): void {
 function findContentArea(): HTMLElement | null {
   const sidebar = findSidebarItemsGroup();
   if (!sidebar) return null;
+  const dialog = sidebar.closest<HTMLElement>('.settings-dialog');
+  const dialogSidebar = sidebar.closest<HTMLElement>('.settings-dialog-sidebar');
+  if (dialog || dialogSidebar) {
+    // 新版弹窗的内容面板位于整个侧栏旁，不能从侧栏内部滚动列表寻找兄弟节点。
+    const row = dialogSidebar?.parentElement;
+    const candidates = dialog && row && dialog.contains(row) && sidebar.closest('[role="dialog"]') === dialog
+      ? Array.from(row.children)
+        .filter((child): child is HTMLElement => child instanceof HTMLElement)
+        .filter((child) => child.matches('[data-settings-panel]') &&
+          child.closest('.settings-dialog') === dialog &&
+          child.closest('[role="dialog"]') === dialog &&
+          !child.contains(sidebar) && isVisibleSettingsContent(child, dialog))
+      : [];
+    if (candidates.length === 1) return candidates[0];
+    plog("content area rejected", {
+      reason: candidates.length ? "ambiguous settings dialog panels" : "no visible settings dialog panel",
+    });
+    return null;
+  }
   const workspaceRow = sidebar.closest<HTMLElement>('[data-app-shell-workspace-row]');
   if (workspaceRow) {
     const surfaces = Array.from(

@@ -4,6 +4,11 @@ All notable changes to codex-plusplus are documented here.
 
 This project uses semver for the installer, runtime, SDK, and published CLI package. Tweak authors should also use semver release tags so the manager can compare installed and available versions.
 
+## 1.0.11
+
+- Restore Config, Tweaks, Tweak Store, and registered tweak pages in the Codex Settings dialog.
+- Update three production dependencies used by the installer and updater. [Full release notes](docs/releases/1.0.11.md)
+
 ## 1.0.9
 
 Release notes: [docs/releases/1.0.9.md](docs/releases/1.0.9.md)
