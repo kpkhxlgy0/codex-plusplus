@@ -14,8 +14,7 @@ const injectorCode = buildSync({
   external: ["electron"],
 }).outputFiles[0].text;
 
-// Real DOM queries and MutationObservers; only layout, animation frames and
-// Electron IPC need substitutes in Node. Each fixture gets a fresh module state.
+// Real DOM queries and MutationObservers; each fixture gets a fresh module state.
 function createInjectorFixture(
   wrapper = "",
   layout: "empty" | "modern" | "legacy" | "dialog" = "empty",
@@ -68,14 +67,16 @@ function createInjectorFixture(
     .h-5 { height: 20px; } .w-8 { width: 32px; }
     .h-4 { height: 16px; } .w-4 { width: 16px; }
   </style></head><body>
-    ${layout === "dialog" ? `<section data-app-shell-workspace-row="true">
+    ${layout === "dialog" ? `<div id="root"><section data-app-shell-workspace-row="true">
       <nav><button>New chat</button><button>Search</button></nav>
       <main data-app-shell-main-surface="default"><div id="home-content" data-app-shell-focus-area="main"
         data-settings-panel><div class="settings-dialog-content" style="display:grid">Home</div></div></main>
-    </section>` : ""}
+    </section></div><div class="contents"><div class="pointer-events-none fixed contain-layout">
+      <div class="isolate"><div class="settings-dialog-backdrop"></div>` : ""}
     <section ${layout === "modern" ? 'data-app-shell-workspace-row="true"' : ""}
       ${layout === "dialog" ? 'class="settings-dialog" role="dialog" aria-label="Settings"' : ""}
       ${wrapper}>${content}</section>
+    ${layout === "dialog" ? "</div></div></div>" : ""}
   </body></html>`, {
     url: layout === "dialog" ? "https://codex.test/" : "https://codex.test/settings",
     runScripts: "outside-only",
@@ -91,8 +92,16 @@ function createInjectorFixture(
   let frameId = 0;
   window.requestAnimationFrame = (callback) => { frames.set(++frameId, callback); return frameId; };
   window.cancelAnimationFrame = (id) => { frames.delete(id); };
-  // The initial startup poll is independent of mutation-driven reinjection.
-  window.setInterval = (() => 0) as typeof window.setInterval;
+  const intervals = new Map<number, () => void>();
+  let intervalId = 0;
+  window.setInterval = ((callback: () => void) => {
+    intervals.set(++intervalId, callback);
+    return intervalId;
+  }) as typeof window.setInterval;
+  window.clearInterval = (id) => { if (id !== undefined) intervals.delete(id); };
+  function tickIntervals() {
+    for (const callback of intervals.values()) callback();
+  }
   const logs: string[] = [];
   const ipcRenderer = {
     send: (_channel: string, _level: string, message: string) => logs.push(message),
@@ -122,8 +131,165 @@ function createInjectorFixture(
     }
     await new Promise<void>((done) => setImmediate(done));
   }
-  return { dom, window, injector, frames, logs, settle };
+  return { dom, window, injector, frames, logs, settle, tickIntervals };
 }
+
+const quietSettingsDomWork = { documentQueries: [], layoutReads: 0, observerCallbacks: 0 };
+
+function watchSettingsDomWork(window: JSDOM["window"]) {
+  const { document } = window;
+  const querySelector = document.querySelector.bind(document);
+  const querySelectorAll = document.querySelectorAll.bind(document);
+  const getComputedStyle = window.getComputedStyle.bind(window);
+  const getBoundingClientRect = window.HTMLElement.prototype.getBoundingClientRect;
+  const Observer = window.MutationObserver;
+  let documentQueries: string[] = [];
+  let layoutReads = 0;
+  let observerCallbacks = 0;
+  document.querySelector = ((selectors: string) => {
+    documentQueries.push(selectors);
+    return querySelector(selectors);
+  }) as typeof document.querySelector;
+  document.querySelectorAll = ((selectors: string) => {
+    documentQueries.push(selectors);
+    return querySelectorAll(selectors);
+  }) as typeof document.querySelectorAll;
+  window.MutationObserver = class extends Observer {
+    constructor(callback: MutationCallback) {
+      super((records, observer) => {
+        observerCallbacks++;
+        callback(records, observer);
+      });
+    }
+  };
+  window.getComputedStyle = (element, pseudoElement) => {
+    layoutReads++;
+    return getComputedStyle(element, pseudoElement);
+  };
+  window.HTMLElement.prototype.getBoundingClientRect = function () {
+    layoutReads++;
+    return getBoundingClientRect.call(this);
+  };
+  return () => {
+    const reads = { documentQueries, layoutReads, observerCallbacks };
+    documentQueries = [];
+    layoutReads = 0;
+    observerCallbacks = 0;
+    return reads;
+  };
+}
+
+function controlTimeouts(window: JSDOM["window"]) {
+  const pending = new Map<number, () => void>();
+  let nextId = 0;
+  window.setTimeout = ((callback: () => void) => {
+    pending.set(++nextId, callback);
+    return nextId;
+  }) as typeof window.setTimeout;
+  window.clearTimeout = (id) => { if (id !== undefined) pending.delete(id); };
+  return () => {
+    for (const [id, callback] of [...pending]) {
+      if (pending.delete(id)) callback();
+    }
+  };
+}
+
+test("nested chat updates trigger no Settings DOM work, including with a dialog open", async () => {
+  const f = createInjectorFixture("", "dialog");
+  try {
+    const { document } = f.window;
+    const portal = document.querySelector("body > .contents")!;
+    const overlay = portal.firstElementChild!;
+    overlay.remove();
+    const chat = document.getElementById("home-content")!;
+    const takeReads = watchSettingsDomWork(f.window);
+    const tickTimeouts = controlTimeouts(f.window);
+    f.injector.startSettingsInjector();
+    await f.settle();
+    const startup = takeReads();
+
+    chat.insertAdjacentHTML("beforeend", '<article><div><button>Copy</button></div></article>');
+    await f.settle();
+    const messageInserted = takeReads();
+
+    chat.querySelector("article")!.setAttribute("aria-busy", "true");
+    await f.settle();
+    const messageUpdated = takeReads();
+
+    f.tickIntervals();
+    tickTimeouts();
+    await f.settle();
+    const startupRetry = takeReads();
+
+    portal.appendChild(overlay);
+    await f.settle();
+    assert.ok(overlay.querySelector('[data-codexpp="nav-config"]'));
+    takeReads();
+    chat.querySelector("article div")!.appendChild(document.createElement("span"));
+    chat.querySelector("article")!.classList.add("streaming");
+    await f.settle();
+
+    assert.deepEqual({ startup, messageInserted, messageUpdated, startupRetry, modalOpen: takeReads() }, {
+      startup: { ...quietSettingsDomWork, documentQueries: ["[data-settings-nav-scroll-container]"] },
+      messageInserted: quietSettingsDomWork,
+      messageUpdated: quietSettingsDomWork,
+      startupRetry: quietSettingsDomWork,
+      modalOpen: quietSettingsDomWork,
+    });
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test("a Store response after closing Settings only updates the badge on the next open", async () => {
+  let resolveStore!: (store: unknown) => void;
+  const pending = new Promise((resolve) => { resolveStore = resolve; });
+  const f = createInjectorFixture("", "dialog", 700, async (channel) =>
+    channel === "codexpp:get-tweak-store" ? pending : null);
+  try {
+    const portal = f.window.document.querySelector("body > .contents")!;
+    const reopened = portal.cloneNode(true) as HTMLElement;
+    const takeReads = watchSettingsDomWork(f.window);
+    f.injector.startSettingsInjector();
+    portal.remove();
+    await f.settle();
+    takeReads();
+    resolveStore({ entries: [{ installed: { version: "1" }, manifest: { version: "2" } }] });
+    await f.settle();
+    assert.deepEqual(takeReads(), quietSettingsDomWork);
+    f.window.document.body.appendChild(reopened);
+    await f.settle();
+    assert.equal(reopened.querySelector("[data-codexpp-store-update-badge]")?.textContent, "1");
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test("a chat link named Settings cannot start Settings detection", async () => {
+  const f = createInjectorFixture("", "dialog");
+  try {
+    const { document } = f.window;
+    document.querySelector("body > .contents")!.replaceChildren();
+    const link = document.createElement("a");
+    link.href = "/threads/user-message";
+    link.textContent = "Settings";
+    link.addEventListener("click", (event) => event.preventDefault());
+    document.getElementById("home-content")!.appendChild(link);
+    const takeReads = watchSettingsDomWork(f.window);
+    const tickTimeouts = controlTimeouts(f.window);
+    f.injector.startSettingsInjector();
+    await f.settle();
+    takeReads();
+
+    link.click();
+    await f.settle();
+    tickTimeouts();
+    await f.settle();
+    assert.deepEqual(takeReads(), quietSettingsDomWork);
+  } finally {
+    f.dom.window.close();
+  }
+});
 
 test("modern Config selection visibly replaces General and same-General click restores native styling", async () => {
   const f = createInjectorFixture("", "modern");
@@ -412,7 +578,7 @@ test("settings dialog mounts each Codex++ page in its own native panel and resto
   }
 });
 
-test("closing and reopening the settings dialog clears its active Codex++ page", async () => {
+test("the home portal mounts Settings, clears its active page on close, and handles late navigation on reopen", async () => {
   const f = createInjectorFixture("", "dialog");
   try {
     let disposed = 0;
@@ -424,18 +590,30 @@ test("closing and reopening the settings dialog clears its active Codex++ page",
     });
     const document = f.window.document;
     const dialog = document.querySelector('[role="dialog"]')!;
-    const reopened = dialog.cloneNode(true) as HTMLElement;
-    const home = document.querySelector("[data-app-shell-workspace-row]")!;
+    const portal = document.querySelector("body > .contents")!;
+    const overlay = portal.firstElementChild!;
+    const reopened = overlay.cloneNode(true) as HTMLElement;
+    const reopenedSidebar = reopened.querySelector("#sidebar")!;
+    const lateNav = reopenedSidebar.firstElementChild!;
+    lateNav.remove();
+    overlay.remove();
+    const home = document.getElementById("home-content")!;
     const homeMarkup = home.innerHTML;
     const native = dialog.querySelector<HTMLElement>("#native-general")!;
     const registeredPage = '[data-codexpp="nav-page-test:page"]';
     const panel = '[data-codexpp="tweaks-panel"]';
+    const takeReads = watchSettingsDomWork(f.window);
+    const tickTimeouts = controlTimeouts(f.window);
     f.injector.startSettingsInjector();
+    await f.settle();
+    assert.equal(document.querySelector(registeredPage), null);
+    portal.appendChild(overlay);
+    await f.settle();
     dialog.querySelector<HTMLButtonElement>(registeredPage)!.click();
     assert.equal(native.style.display, "none");
     assert.ok(dialog.querySelector(panel)?.textContent?.includes("Test content"));
 
-    dialog.remove();
+    overlay.remove();
     await f.settle();
     assert.equal(native.style.display, "flex");
     assert.equal(dialog.querySelector(panel), null);
@@ -443,7 +621,20 @@ test("closing and reopening the settings dialog clears its active Codex++ page",
     assert.equal(document.querySelector('[data-codexpp="nav-group"]'), null);
     assert.equal(home.innerHTML, homeMarkup);
 
-    document.body.appendChild(reopened);
+    takeReads();
+    home.insertAdjacentHTML("beforeend", '<article><div><button>Copy</button></div></article>');
+    await f.settle();
+    home.querySelector("article")!.classList.add("streaming");
+    f.tickIntervals();
+    tickTimeouts();
+    await f.settle();
+    const postCloseReads = takeReads();
+    const updatedHomeMarkup = home.innerHTML;
+
+    portal.appendChild(reopened);
+    await f.settle();
+    assert.equal(reopened.querySelector(registeredPage), null);
+    reopenedSidebar.prepend(lateNav);
     await f.settle();
     const page = reopened.querySelector<HTMLButtonElement>(registeredPage);
     assert.ok(page);
@@ -453,7 +644,9 @@ test("closing and reopening the settings dialog clears its active Codex++ page",
     page.click();
     assert.ok(reopened.querySelector(panel)?.textContent?.includes("Test content"));
     assert.equal(disposed, 1);
-    assert.equal(home.innerHTML, homeMarkup);
+    assert.equal(home.innerHTML, updatedHomeMarkup);
+    assert.equal(f.window.location.pathname, "/");
+    assert.deepEqual(postCloseReads, quietSettingsDomWork);
   } finally {
     await new Promise<void>((done) => setImmediate(done));
     f.dom.window.close();
@@ -523,6 +716,214 @@ test("legacy settings layout still mounts in its single visible content sibling"
       f.window.document.getElementById("main-content"));
   } finally {
     await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("an explicit Settings route supports a div-based sidebar in a workspace row", async () => {
+  const f = createInjectorFixture("", "modern");
+  try {
+    const { document } = f.window;
+    const leftPanel = document.getElementById("left-panel")!;
+    const nativeItems = document.getElementById("sidebar")!.innerHTML;
+    leftPanel.innerHTML = `<div id="sidebar">${nativeItems}</div>`;
+    leftPanel.getBoundingClientRect = () => new f.window.DOMRect(0, 0, 340, 640);
+
+    f.injector.startSettingsInjector();
+    await f.settle();
+    const config = leftPanel.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]');
+    assert.ok(config);
+    config.click();
+    assert.equal(document.querySelector('[data-codexpp="tweaks-panel"]')!.parentElement,
+      document.getElementById("main-content"));
+    assert.equal(document.getElementById("native-general")!.style.display, "none");
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("declining Back to app preserves Settings until navigation commits", async () => {
+  const f = createInjectorFixture("", "legacy");
+  try {
+    const { document } = f.window;
+    const back = document.createElement("a");
+    back.href = "/";
+    back.textContent = "Back to app";
+    let leaveAllowed = false;
+    back.addEventListener("click", (event) => {
+      event.preventDefault();
+      if (leaveAllowed) f.window.history.pushState({}, "", "/");
+    });
+    document.getElementById("sidebar")!.prepend(back);
+    const tickTimeouts = controlTimeouts(f.window);
+    f.injector.startSettingsInjector();
+    const config = document.querySelector<HTMLButtonElement>('[data-codexpp="nav-config"]')!;
+    const native = document.getElementById("native-general")!;
+    config.click();
+    await f.settle();
+    const panel = document.querySelector<HTMLElement>('[data-codexpp="tweaks-panel"]')!;
+    assert.equal(panel.style.display, "block");
+
+    back.click();
+    tickTimeouts();
+    await f.settle();
+    const afterDecline = {
+      path: f.window.location.pathname,
+      settingsVisible: document.documentElement.dataset.codexppSettingsSurface,
+      configMounted: config.isConnected,
+      panelVisible: panel.isConnected && panel.style.display === "block",
+      nativeDisplay: native.style.display,
+    };
+
+    leaveAllowed = true;
+    back.click();
+    await f.settle();
+    assert.equal(f.window.location.pathname, "/");
+    assert.equal(config.isConnected, false);
+    assert.equal(panel.isConnected, false);
+    assert.equal(native.style.display, "flex");
+    assert.deepEqual(afterDecline, {
+      path: "/settings", settingsVisible: "true", configMounted: true, panelVisible: true, nativeDisplay: "none",
+    });
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+for (const replacementTiming of ["immediate", "asynchronous"] as const) {
+  test(`memory-routed legacy Settings follows an ${replacementTiming} row replacement`, async () => {
+    const f = createInjectorFixture("", "legacy");
+    try {
+      const { document } = f.window;
+      f.window.history.replaceState({}, "", "/");
+      const first = document.querySelector("section")!;
+      const replacement = first.cloneNode(true) as HTMLElement;
+      const root = document.createElement("div");
+      root.id = "root";
+      first.replaceWith(root);
+      root.appendChild(first);
+      const tickTimeouts = controlTimeouts(f.window);
+      const config = '[data-codexpp="nav-config"]';
+      const panel = '[data-codexpp="tweaks-panel"]';
+
+      f.injector.startSettingsInjector();
+      f.injector.onSettingsNavigation("/settings/general");
+      await f.settle();
+      assert.equal(first.querySelectorAll(config).length, 1);
+
+      f.injector.onSettingsNavigation("/settings/appearance");
+      assert.equal(first.isConnected, true);
+      if (replacementTiming === "immediate") {
+        first.replaceWith(replacement);
+      } else {
+        await f.settle();
+        first.remove();
+        await f.settle();
+        tickTimeouts();
+        root.appendChild(replacement);
+      }
+      await f.settle();
+      tickTimeouts();
+      await f.settle();
+
+      assert.equal(first.querySelector(config), null);
+      assert.equal(replacement.querySelectorAll(config).length, 1);
+      replacement.querySelector<HTMLButtonElement>(config)!.click();
+      assert.equal(replacement.querySelectorAll(panel).length, 1);
+      assert.equal(replacement.querySelector(panel)!.parentElement, replacement.querySelector("#main-content"));
+      assert.equal(f.window.location.pathname, "/");
+    } finally {
+      await new Promise<void>((done) => setImmediate(done));
+      f.dom.window.close();
+    }
+  });
+}
+
+test("native back after an in-place memory-routed Settings update leaves chat silent", async () => {
+  const f = createInjectorFixture("", "legacy");
+  try {
+    const { document } = f.window;
+    f.window.history.replaceState({}, "", "/");
+    const settings = document.querySelector("section")!;
+    const root = document.createElement("div");
+    root.id = "root";
+    settings.replaceWith(root);
+    root.appendChild(settings);
+    const takeReads = watchSettingsDomWork(f.window);
+    const tickTimeouts = controlTimeouts(f.window);
+    const config = '[data-codexpp="nav-config"]';
+    f.injector.startSettingsInjector();
+    f.injector.onSettingsNavigation("/settings/general");
+    await f.settle();
+    assert.equal(settings.querySelectorAll(config).length, 1);
+
+    f.injector.onSettingsNavigation("/settings/appearance");
+    await f.settle();
+    settings.querySelector("#main-content")!.innerHTML = '<div><h2>Appearance</h2><button>Theme</button></div>';
+    const appearance = Array.from(settings.querySelectorAll("nav button"))
+      .find((button) => button.textContent === "Appearance")!;
+    appearance.setAttribute("aria-current", "page");
+    await f.settle();
+    assert.equal(settings.querySelectorAll(config).length, 1);
+    takeReads();
+
+    const chat = document.createElement("section");
+    chat.innerHTML = `<nav id="sidebar"><button>New chat</button><button>Search</button></nav>
+      <main><article><p>Conversation</p></article></main>`;
+    settings.replaceWith(chat);
+    await f.settle();
+    const { documentQueries, layoutReads } = takeReads();
+    assert.equal(settings.querySelector(config), null);
+    assert.equal(root.querySelector(config), null);
+    assert.equal(f.window.location.pathname, "/");
+
+    const message = chat.querySelector("article")!;
+    message.appendChild(document.createElement("p"));
+    message.setAttribute("aria-busy", "true");
+    for (let tick = 0; tick < 3; tick++) {
+      tickTimeouts();
+      await f.settle();
+    }
+    assert.deepEqual({ closing: { documentQueries, layoutReads }, afterClose: takeReads() }, {
+      closing: { documentQueries: [], layoutReads: 0 },
+      afterClose: quietSettingsDomWork,
+    });
+  } finally {
+    await new Promise<void>((done) => setImmediate(done));
+    f.dom.window.close();
+  }
+});
+
+test("a chat route cancels pending memory-routed Settings and leaves chat updates silent", async () => {
+  const f = createInjectorFixture("", "legacy");
+  try {
+    const { document } = f.window;
+    f.window.history.replaceState({}, "", "/");
+    const delayedSettings = document.querySelector("section")!;
+    const root = document.createElement("div");
+    root.id = "root";
+    root.innerHTML = "<main><article></article></main>";
+    delayedSettings.replaceWith(root);
+    const takeReads = watchSettingsDomWork(f.window);
+    const tickTimeouts = controlTimeouts(f.window);
+    f.injector.startSettingsInjector();
+    f.injector.onSettingsNavigation("/settings/general");
+    await f.settle();
+    f.injector.onSettingsNavigation("/threads/next");
+    await f.settle();
+    takeReads();
+
+    root.appendChild(delayedSettings);
+    root.querySelector("article")!.appendChild(document.createElement("p"));
+    await f.settle();
+    tickTimeouts();
+    await f.settle();
+    assert.deepEqual(takeReads(), quietSettingsDomWork);
+    assert.equal(root.querySelector('[data-codexpp="nav-config"]'), null);
+    assert.equal(f.window.location.pathname, "/");
+  } finally {
     f.dom.window.close();
   }
 });

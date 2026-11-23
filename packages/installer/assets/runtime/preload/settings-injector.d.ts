@@ -3,9 +3,8 @@
  *
  * Codex's settings can be a routed page or a modal dialog. The sidebar is a
  * grouped settings nav (Personal, Integrations, Coding, Archived) with native section headers above stacks of
- * buttons. There are no stable `role` / `aria-label` / `data-testid` hooks on
- * the shell so we identify the sidebar by text-content match against known item
- * labels (General, Appearance, Configuration, …).
+ * buttons. Current builds expose a dialog or a settings nav marker. Older
+ * routed pages are identified by their native sidebar labels.
  *
  * Layout we inject:
  *
@@ -40,6 +39,7 @@ interface TweakUpdateCheck {
     error?: string;
 }
 export declare function startSettingsInjector(): void;
+export declare function onSettingsNavigation(path: string): void;
 export declare function registerSection(section: SettingsSection): SettingsHandle;
 export declare function clearSections(): void;
 /**

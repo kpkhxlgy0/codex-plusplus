@@ -11,7 +11,7 @@
 
 import { ipcRenderer } from "electron";
 import { installReactHook } from "./react-hook";
-import { startSettingsInjector } from "./settings-injector";
+import { onSettingsNavigation, startSettingsInjector } from "./settings-injector";
 import { startTweakHost, teardownTweakHost } from "./tweak-host";
 import { mountManager } from "./manager";
 
@@ -168,6 +168,9 @@ function installBrowserUiHostBridge(): void {
 
   ipcRenderer.on(DESKTOP_MESSAGE_FOR_VIEW, (_event, message) => {
     ipcRenderer.send(BROWSER_UI_MESSAGE_FOR_VIEW, message);
+    if (message?.type === "navigate-to-route" && typeof message.path === "string") {
+      onSettingsNavigation(message.path);
+    }
   });
 
   ipcRenderer.on(DESKTOP_SYSTEM_THEME_UPDATED, (_event, value) => {

@@ -4,6 +4,11 @@ All notable changes to codex-plusplus are documented here.
 
 This project uses semver for the installer, runtime, SDK, and published CLI package. Tweak authors should also use semver release tags so the manager can compare installed and available versions.
 
+## 1.0.12
+
+- Chat updates no longer trigger Settings sidebar searches or layout reads while Settings is closed.
+- Keep Config, Tweaks, and Tweak Store available when Settings opens, reopens, or changes pages. [Full release notes](docs/releases/1.0.12.md)
+
 ## 1.0.11
 
 - Restore Config, Tweaks, Tweak Store, and registered tweak pages in the Codex Settings dialog.

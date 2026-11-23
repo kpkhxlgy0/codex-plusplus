@@ -159,6 +159,9 @@ function installBrowserUiHostBridge() {
     });
     electron_1.ipcRenderer.on(DESKTOP_MESSAGE_FOR_VIEW, (_event, message) => {
         electron_1.ipcRenderer.send(BROWSER_UI_MESSAGE_FOR_VIEW, message);
+        if (message?.type === "navigate-to-route" && typeof message.path === "string") {
+            (0, settings_injector_1.onSettingsNavigation)(message.path);
+        }
     });
     electron_1.ipcRenderer.on(DESKTOP_SYSTEM_THEME_UPDATED, (_event, value) => {
         electron_1.ipcRenderer.send(BROWSER_UI_SYSTEM_THEME, value);

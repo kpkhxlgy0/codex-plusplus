@@ -3,9 +3,8 @@
  *
  * Codex's settings can be a routed page or a modal dialog. The sidebar is a
  * grouped settings nav (Personal, Integrations, Coding, Archived) with native section headers above stacks of
- * buttons. There are no stable `role` / `aria-label` / `data-testid` hooks on
- * the shell so we identify the sidebar by text-content match against known item
- * labels (General, Appearance, Configuration, …).
+ * buttons. Current builds expose a dialog or a settings nav marker. Older
+ * routed pages are identified by their native sidebar labels.
  *
  * Layout we inject:
  *
@@ -34,10 +33,12 @@ import {
   type TweakStorePublishSubmission,
 } from "../tweak-store";
 import {
+  codexPpControlLabel,
   codexPpSettingsLabelsFrom,
   codexPpSettingsLabelScore,
   compactSettingsText,
   hasNativeSettingsSectionHeaders,
+  isCodexPpSettingsLabelSet,
   isForbiddenSettingsSidebarSurface,
   isSettingsSidebarCandidate,
 } from "./settings-dom-heuristics";
@@ -221,7 +222,6 @@ interface InjectorState {
   panelHost: HTMLElement | null;
   contentHost: HTMLElement | null;
   hiddenContent: Map<HTMLElement, string>;
-  observer: MutationObserver | null;
   fingerprint: string | null;
   sidebarDumped: boolean;
   activePage: ActivePage | null;
@@ -249,7 +249,6 @@ const state: InjectorState = {
   panelHost: null,
   contentHost: null,
   hiddenContent: new Map(),
-  observer: null,
   fingerprint: null,
   sidebarDumped: false,
   activePage: null,
@@ -265,6 +264,13 @@ const state: InjectorState = {
 
 let scheduledInjectFrame: number | null = null;
 let lastSidebarMissingLogAt = 0;
+const SETTINGS_DIALOG = '[role="dialog"].settings-dialog';
+const SETTINGS_NAV = "[data-settings-nav-scroll-container]";
+let portalObserver: MutationObserver | null = null;
+let settingsObserver: MutationObserver | null = null;
+let settingsRoot: HTMLElement | null = null;
+let routeRetry: ReturnType<typeof setTimeout> | null = null;
+let pendingRouteContent: HTMLElement | null = null;
 
 function plog(msg: string, extra?: unknown): void {
   ipcRenderer.send(
@@ -284,17 +290,21 @@ function safeStringify(v: unknown): string {
 // ───────────────────────────────────────────────────────────── public API ──
 
 export function startSettingsInjector(): void {
-  if (state.observer) return;
-
-  const obs = new MutationObserver(() => {
-    scheduleInject();
-  });
-  obs.observe(document.documentElement, { childList: true, subtree: true });
-  state.observer = obs;
+  if (portalObserver) return;
+  portalObserver = new MutationObserver(syncDialogPortal);
+  syncDialogPortal();
 
   window.addEventListener("popstate", onNav);
   window.addEventListener("hashchange", onNav);
   document.addEventListener("click", onDocumentClick, true);
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "," && (event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey) {
+      waitForRoutedSettings();
+    } else if (event.key === "Escape") {
+      pendingRouteContent = null;
+      cancelRouteRetry();
+    }
+  }, true);
   for (const m of ["pushState", "replaceState"] as const) {
     const orig = history[m];
     history[m] = function (this: History, ...args: Parameters<typeof orig>) {
@@ -305,28 +315,165 @@ export function startSettingsInjector(): void {
     window.addEventListener(`codexpp-${m}`, onNav);
   }
 
-  runInjectAndDump();
-  let ticks = 0;
-  const interval = setInterval(() => {
-    ticks++;
-    scheduleInject();
-    if (ticks > 60) clearInterval(interval);
-  }, 500);
+  if (settingsRoot) return;
+  // A restored full-screen Settings view may use an internal memory router.
+  const mountedNav = document.querySelector<HTMLElement>(SETTINGS_NAV);
+  if (mountedNav) observeRoutedSidebar(mountedNav);
+  else if (isSettingsPath(currentPath())) waitForRoutedSettings();
+}
+
+function syncDialogPortal(): void {
+  if (!window.document?.body) return;
+  // Codex mounts dialogs in body > .contents > .pointer-events-none > .isolate.
+  // React can attach these layers separately. Watch only their direct children.
+  const layers = ["div.contents", ".pointer-events-none", ".isolate"];
+  let dialog: HTMLElement | null = null;
+  portalObserver!.disconnect();
+  function visit(parent: Element, depth: number): void {
+    portalObserver!.observe(parent, { childList: true });
+    for (const child of Array.from(parent.children)) {
+      if (child instanceof HTMLElement && child.matches(SETTINGS_DIALOG)) dialog = child;
+      else if (depth < layers.length && child.matches(layers[depth])) visit(child, depth + 1);
+    }
+  }
+  visit(document.body, 0);
+  if (dialog) observeSettingsRoot(dialog);
+  else if (settingsRoot?.matches(SETTINGS_DIALOG)) {
+    observeSettingsRoot(null);
+    if (isSettingsPath(currentPath())) waitForRoutedSettings();
+  }
+}
+
+function currentPath(): string {
+  return location.hash.startsWith("#/") ? location.hash.slice(1) : location.pathname;
+}
+
+function isSettingsPath(path: string): boolean {
+  return /^\/settings(?:[/?#]|$)/.test(path);
 }
 
 function onNav(): void {
-  state.fingerprint = null;
-  runInjectAndDump();
-  if (!state.sidebarRoot) setSettingsSurfaceVisible(false, "navigation-left-settings");
+  onSettingsNavigation(currentPath());
 }
 
-function runInjectAndDump(): void {
+export function onSettingsNavigation(path: string): void {
+  if (!portalObserver || settingsRoot?.matches(SETTINGS_DIALOG)) return;
+  if (isSettingsPath(path)) {
+    if (settingsRoot?.isConnected) {
+      pendingRouteContent = findContentArea() ?? settingsRoot;
+      scheduleInject();
+    } else waitForRoutedSettings();
+  } else {
+    pendingRouteContent = null;
+    cancelRouteRetry();
+    observeSettingsRoot(null);
+  }
+}
+
+function cancelRouteRetry(): void {
+  if (routeRetry !== null) clearTimeout(routeRetry);
+  routeRetry = null;
+}
+
+function waitForRoutedSettings(): void {
+  if (settingsRoot?.isConnected || routeRetry !== null) return;
+  // Only an explicit open can arm retries for older, asynchronously routed pages.
+  const deadline = performance.now() + 30_000;
+  function probe(): void {
+    routeRetry = null;
+    const nav = findRoutedSidebar();
+    if (nav) observeRoutedSidebar(nav);
+    else if (performance.now() < deadline) routeRetry = setTimeout(probe, 500);
+  }
+  probe();
+}
+
+function findRoutedSidebar(): HTMLElement | null {
+  const sidebar = document.querySelector<HTMLElement>(SETTINGS_NAV) ??
+    findSidebarItemsGroup(document, "nav,aside,[role='navigation'],.overflow-y-auto");
+  if (sidebar) return sidebar;
+  // Some full-screen builds use only divs in the sidebar. Restrict that fallback
+  // to the columns beside the native main surface, away from conversation content.
+  const main = document.querySelector('[data-app-shell-workspace-row] [data-app-shell-main-surface="default"]');
+  const row = main?.closest("[data-app-shell-workspace-row]");
+  if (!main || !row) return null;
+  for (const column of Array.from(row.children)) {
+    if (!(column instanceof HTMLElement) || column.contains(main)) continue;
+    const controls = column.querySelectorAll<HTMLElement>("button,a,[role='button'],[role='link']");
+    if (!isCodexPpSettingsLabelSet(Array.from(controls, codexPpControlLabel))) continue;
+    const candidate = findSidebarItemsGroup(column);
+    if (candidate) return candidate;
+  }
+  return null;
+}
+
+function observeRoutedSidebar(sidebar: HTMLElement): void {
+  const dialog = sidebar.closest<HTMLElement>(SETTINGS_DIALOG);
+  if (dialog) {
+    observeSettingsRoot(dialog);
+    return;
+  }
+  const nav = sidebar.closest<HTMLElement>("nav,aside,[role='navigation']") ?? sidebar;
+  const row = sidebar.closest<HTMLElement>("[data-app-shell-workspace-row]") ?? nav.parentElement;
+  observeSettingsRoot(row && row !== document.body && row !== document.documentElement ? row : nav);
+}
+
+function leaveRoutedRoot(): void {
+  const resume = !!pendingRouteContent || isSettingsPath(currentPath());
+  observeSettingsRoot(null);
+  if (resume) waitForRoutedSettings();
+}
+
+function observeSettingsRoot(root: HTMLElement | null): void {
+  cancelRouteRetry();
+  if (settingsRoot === root) return;
+  pendingRouteContent = null;
+  settingsObserver?.disconnect();
+  settingsObserver = null;
   if (scheduledInjectFrame !== null) {
     cancelAnimationFrame(scheduledInjectFrame);
     scheduledInjectFrame = null;
   }
+  if (state.settingsSurfaceHideTimer) {
+    clearTimeout(state.settingsSurfaceHideTimer);
+    state.settingsSurfaceHideTimer = null;
+  }
+  if (settingsRoot) {
+    clearSettingsUi();
+    setSettingsSurfaceVisible(false, "settings-closed");
+  }
+  settingsRoot = root;
+  if (!root) return;
+  settingsObserver = new MutationObserver((records) => {
+    if (!window.document?.body || settingsRoot !== root) return;
+    if (!root.isConnected) {
+      if (root.matches(SETTINGS_DIALOG)) observeSettingsRoot(null);
+      else leaveRoutedRoot();
+    } else if (records.some((record) => root.contains(record.target))) {
+      // Internal navigation can update the content in place instead of replacing
+      // the row. A subsequent native Back then closes Settings without a URL change.
+      const pending = pendingRouteContent;
+      if (pending && (!pending.isConnected || records.some((record) => changedNativeContent(pending, record)))) {
+        pendingRouteContent = null;
+      }
+      scheduleInject();
+    }
+  });
+  settingsObserver.observe(root, { childList: true, subtree: true });
+  // A routed shell can be removed together with its parent. Sibling subtrees
+  // (including the conversation behind a dialog) do not need observation.
+  for (let parent = root.parentElement; parent; parent = parent.parentElement) {
+    settingsObserver.observe(parent, { childList: true });
+  }
+  state.fingerprint = null;
   tryInject();
   maybeDumpDom();
+}
+
+function changedNativeContent(content: HTMLElement, { target, addedNodes, removedNodes }: MutationRecord): boolean {
+  if (!content.contains(target) || (target instanceof Element && target.closest("[data-codexpp]"))) return false;
+  const native = (node: Node) => !(node instanceof Element && node.hasAttribute("data-codexpp"));
+  return Array.from(addedNodes).some(native) || Array.from(removedNodes).some(native);
 }
 
 function scheduleInject(): void {
@@ -339,12 +486,22 @@ function scheduleInject(): void {
 
 function onDocumentClick(e: MouseEvent): void {
   const target = e.target instanceof Element ? e.target : null;
+  if (!settingsRoot) {
+    const entry = target?.closest<HTMLElement>("a[href], [role='menuitem']");
+    if (!entry) return;
+    const settingsLink = isSettingsPath(entry.getAttribute("href") ?? "");
+    const settingsItem = entry.getAttribute("role") === "menuitem" &&
+      /^(settings|设置)(?:…|\.\.\.)?$/i.test(compactSettingsText(entry.getAttribute("aria-label") || entry.textContent || ""));
+    if (settingsLink || settingsItem) waitForRoutedSettings();
+    return;
+  }
   const control = target?.closest("[role='link'],button,a");
   if (!(control instanceof HTMLElement)) return;
-  if (compactSettingsText(control.textContent || "") !== "Back to app") return;
-  setTimeout(() => {
-    setSettingsSurfaceVisible(false, "back-to-app");
-  }, 0);
+  if (isBackToApp(control)) pendingRouteContent = null;
+}
+
+function isBackToApp(control: Element | null): boolean {
+  return !!control && (control.getAttribute("href") === "/" || compactSettingsText(control.textContent || "") === "Back to app");
 }
 
 export function registerSection(section: SettingsSection): SettingsHandle {
@@ -427,10 +584,17 @@ export function setListedTweaks(list: ListedTweak[]): void {
 // ───────────────────────────────────────────────────────────── injection ──
 
 function tryInject(): void {
+  if (!settingsRoot) return;
   removeMisplacedSettingsGroups();
 
   const itemsGroup = findSidebarItemsGroup();
   if (!itemsGroup) {
+    // A memory-routed full-screen view can reuse its row for the chat on exit.
+    if (state.settingsSurfaceVisible && !settingsRoot.matches(SETTINGS_DIALOG) &&
+      !isSettingsPath(currentPath()) && !settingsRoot.querySelector(SETTINGS_NAV)) {
+      leaveRoutedRoot();
+      return;
+    }
     clearSettingsUi();
     scheduleSettingsSurfaceHidden();
     logSidebarMissing();
@@ -551,6 +715,7 @@ function tryInject(): void {
 
   state.navGroup = group;
   state.navButtons = { config: configBtn, tweaks: tweaksBtn, store: storeBtn };
+  if (state.tweakStore) updateStoreUpdateBadge(outdatedInstalledStoreCount(state.tweakStore.entries));
   plog("nav group injected", { outerTag: outer.tagName });
   syncPagesGroup();
 }
@@ -613,7 +778,7 @@ function smallestSettingsScrollable(nodes: HTMLElement[]): HTMLElement | null {
 }
 
 function removeSettingsGroupsOutsideRoot(root: HTMLElement): void {
-  const groups = document.querySelectorAll<HTMLElement>(
+  const groups = settingsRoot!.querySelectorAll<HTMLElement>(
     "[data-codexpp='nav-group'], [data-codexpp='pages-group'], [data-codexpp='native-nav-header']",
   );
   for (const group of Array.from(groups)) {
@@ -629,13 +794,16 @@ function clearSettingsUi(): void {
     restoreCodexView();
   }
   panel?.remove();
+  state.navGroup?.remove();
+  state.pagesGroup?.remove();
+  state.nativeNavHeader?.remove();
   for (const page of state.pages.values()) {
     try { page.teardown?.(); }
     catch (error) { plog("page teardown failed", { id: page.id, err: String(error) }); }
     page.teardown = null;
     page.navButton = null;
   }
-  for (const group of Array.from(document.querySelectorAll(
+  for (const group of Array.from(settingsRoot!.querySelectorAll(
     "[data-codexpp='nav-group'], [data-codexpp='pages-group'], " +
     "[data-codexpp='native-nav-header'], [data-codexpp='tweaks-panel']",
   ))) group.remove();
@@ -676,9 +844,6 @@ function scheduleSettingsSurfaceHidden(): void {
   if (!state.settingsSurfaceVisible || state.settingsSurfaceHideTimer) return;
   state.settingsSurfaceHideTimer = setTimeout(() => {
     state.settingsSurfaceHideTimer = null;
-    const sidebar = findSidebarItemsGroup();
-    if (sidebar && isSettingsSidebarCandidate(sidebar)
-      && isSettingsSidebarCandidate(findSidebarInjectionRoot(sidebar))) return;
     setSettingsSurfaceVisible(false, "sidebar-not-found");
   }, 1500);
 }
@@ -976,6 +1141,7 @@ function activatePage(page: ActivePage): void {
       if (state.navGroup?.contains(target)) return; // our buttons
       if (state.pagesGroup?.contains(target)) return; // our page buttons
       if (target.closest("[data-codexpp-settings-search]")) return;
+      if (isBackToApp(target.closest("[role='link'],button,a"))) return;
       restoreCodexView();
     };
     state.sidebarRestoreHandler = handler;
@@ -2071,7 +2237,7 @@ function setSidebarCodexPlusPlusUpdateButton(check: CodexPlusPlusUpdateCheck | n
 }
 
 function updateStoreUpdateBadge(count: number | null): void {
-  const badge = document.querySelector<HTMLElement>("[data-codexpp-store-update-badge]");
+  const badge = state.navGroup?.querySelector<HTMLElement>("[data-codexpp-store-update-badge]");
   if (!badge) return;
   badge.dataset.codexppStoreUpdateCount = count === null ? "" : String(count);
   applyStoreUpdateBadgeStyle(badge, count);
@@ -2102,7 +2268,7 @@ function applyStoreUpdateBadgeStyle(badge: HTMLElement, count: number | null): v
 }
 
 function currentStoreUpdateBadgeCount(): number {
-  const badge = document.querySelector<HTMLElement>("[data-codexpp-store-update-badge]");
+  const badge = state.navGroup?.querySelector<HTMLElement>("[data-codexpp-store-update-badge]");
   const raw = badge?.dataset.codexppStoreUpdateCount;
   const parsed = raw ? Number(raw) : 0;
   return Number.isFinite(parsed) ? parsed : 0;
@@ -2924,13 +3090,19 @@ async function resolveIconUrl(
 
 // ─────────────────────────────────────────────────────── DOM heuristics ──
 
-function findSidebarItemsGroup(): HTMLElement | null {
+function findSidebarItemsGroup(
+  root: ParentNode | null = settingsRoot,
+  selector = "aside,nav,[role='navigation'],div",
+): HTMLElement | null {
+  if (!root) return null;
   const cached = cachedSidebarItemsGroup();
-  if (cached) return cached;
+  if (cached && root.contains(cached)) return cached;
 
-  const candidates = Array.from(
-    document.querySelectorAll<HTMLElement>("aside,nav,[role='navigation'],div"),
-  );
+  const scope = root instanceof HTMLElement && root.matches(SETTINGS_DIALOG)
+    ? root.querySelector<HTMLElement>(".settings-dialog-sidebar") ?? root
+    : root;
+  const candidates = Array.from(scope.querySelectorAll<HTMLElement>(selector));
+  if (scope instanceof HTMLElement && scope.matches(selector)) candidates.unshift(scope);
 
   let best: HTMLElement | null = null;
   let bestScore = -1;
@@ -2973,7 +3145,7 @@ function cachedSidebarItemsGroup(): HTMLElement | null {
 }
 
 function removeMisplacedSettingsGroups(): void {
-  const groups = document.querySelectorAll<HTMLElement>(
+  const groups = settingsRoot!.querySelectorAll<HTMLElement>(
     "[data-codexpp='nav-group'], [data-codexpp='pages-group'], [data-codexpp='native-nav-header']",
   );
   for (const group of Array.from(groups)) {
