@@ -14,6 +14,8 @@ function compactSettingsText(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
 }
 function hasNativeSettingsSectionHeaders(root) {
+    if (root.querySelector('[class~="group/nav-section-title"]'))
+        return true;
     const headings = new Set(["Personal", "Integrations", "Coding", "Archived"]);
     return Array.from(root.querySelectorAll("div,span")).some((el) => {
         if (el.dataset.codexpp)

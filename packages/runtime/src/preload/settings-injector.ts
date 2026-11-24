@@ -266,9 +266,14 @@ let scheduledInjectFrame: number | null = null;
 let lastSidebarMissingLogAt = 0;
 const SETTINGS_DIALOG = '[role="dialog"].settings-dialog';
 const SETTINGS_NAV = "[data-settings-nav-scroll-container]";
-let portalObserver: MutationObserver | null = null;
+const SHELL_PAGE = "[data-app-shell-frame],[data-app-shell-active-page],[data-app-shell-shared-local-frame]";
+const SHELL_LAYOUT = "[data-app-shell-workspace-row],[data-app-shell-workspace]";
+const SHELL_SIDEBAR = "[data-app-shell-left-panel-appearance]";
+let layoutObserver: MutationObserver | null = null;
+let sidebarObserver: MutationObserver | null = null;
 let settingsObserver: MutationObserver | null = null;
 let settingsRoot: HTMLElement | null = null;
+let nativeSettingsNav: HTMLElement | null = null;
 let routeRetry: ReturnType<typeof setTimeout> | null = null;
 let pendingRouteContent: HTMLElement | null = null;
 
@@ -290,9 +295,10 @@ function safeStringify(v: unknown): string {
 // ───────────────────────────────────────────────────────────── public API ──
 
 export function startSettingsInjector(): void {
-  if (portalObserver) return;
-  portalObserver = new MutationObserver(syncDialogPortal);
-  syncDialogPortal();
+  if (layoutObserver) return;
+  layoutObserver = new MutationObserver(syncSettingsHosts);
+  sidebarObserver = new MutationObserver(onSidebarMutations);
+  syncSettingsHosts();
 
   window.addEventListener("popstate", onNav);
   window.addEventListener("hashchange", onNav);
@@ -317,30 +323,98 @@ export function startSettingsInjector(): void {
 
   if (settingsRoot) return;
   // A restored full-screen Settings view may use an internal memory router.
-  const mountedNav = document.querySelector<HTMLElement>(SETTINGS_NAV);
+  const mountedNav = findMountedSettingsNav(document);
   if (mountedNav) observeRoutedSidebar(mountedNav);
   else if (isSettingsPath(currentPath())) waitForRoutedSettings();
 }
 
-function syncDialogPortal(): void {
+function syncSettingsHosts(): void {
   if (!window.document?.body) return;
   // Codex mounts dialogs in body > .contents > .pointer-events-none > .isolate.
   // React can attach these layers separately. Watch only their direct children.
   const layers = ["div.contents", ".pointer-events-none", ".isolate"];
   let dialog: HTMLElement | null = null;
-  portalObserver!.disconnect();
+  layoutObserver!.disconnect();
+  sidebarObserver!.disconnect();
   function visit(parent: Element, depth: number): void {
-    portalObserver!.observe(parent, { childList: true });
+    layoutObserver!.observe(parent, { childList: true });
     for (const child of Array.from(parent.children)) {
       if (child instanceof HTMLElement && child.matches(SETTINGS_DIALOG)) dialog = child;
       else if (depth < layers.length && child.matches(layers[depth])) visit(child, depth + 1);
     }
   }
   visit(document.body, 0);
+  const host = document.getElementById("root");
+  const nav = host && watchShellSidebars(host);
   if (dialog) observeSettingsRoot(dialog);
-  else if (settingsRoot?.matches(SETTINGS_DIALOG)) {
+  else if (nav) observeRoutedSidebar(nav);
+  else if (settingsRoot && (settingsRoot.matches(SETTINGS_DIALOG) || isHiddenShellPage(nativeSettingsNav ?? settingsRoot))) {
     observeSettingsRoot(null);
     if (isSettingsPath(currentPath())) waitForRoutedSettings();
+  }
+}
+
+function isHiddenShellPage(node: HTMLElement): boolean {
+  for (let page = node.closest<HTMLElement>(SHELL_PAGE); page; page = page.parentElement?.closest(SHELL_PAGE) ?? null) {
+    if (page.hidden || page.hasAttribute("inert") || page.style.display === "none" ||
+      page.getAttribute("aria-hidden") === "true" || page.getAttribute("data-app-shell-active-page") === "false") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function findMountedSettingsNav(scope: ParentNode): HTMLElement | null {
+  const first = scope.querySelector<HTMLElement>(SETTINGS_NAV);
+  if (!first || !isHiddenShellPage(first)) return first;
+  return Array.from(scope.querySelectorAll<HTMLElement>(SETTINGS_NAV)).find(nav => !isHiddenShellPage(nav)) ?? null;
+}
+
+// Full-screen Settings uses a memory router. Frames may be swapped, retained
+// while hidden, or populated asynchronously. Follow only the shell's layout
+// layers and left panel, keeping the conversation subtree outside observation.
+function watchShellSidebars(host: HTMLElement): HTMLElement | null {
+  let nav: HTMLElement | null = null;
+  function visit(layer: HTMLElement): void {
+    if (layer.matches(SHELL_PAGE)) {
+      layoutObserver!.observe(layer, {
+        childList: true, attributeFilter: ["hidden", "inert", "style", "aria-hidden", "data-app-shell-active-page"],
+      });
+      if (isHiddenShellPage(layer)) return;
+    } else layoutObserver!.observe(layer, { childList: true });
+    for (const child of Array.from(layer.children)) {
+      if (!(child instanceof HTMLElement)) continue;
+      if (child.matches(SHELL_SIDEBAR)) {
+        sidebarObserver!.observe(child, {
+          childList: true, subtree: true, attributeFilter: ["data-settings-nav-scroll-container"],
+        });
+        nav ??= findMountedSettingsNav(child);
+      } else if (child.matches(SHELL_PAGE) || child.matches(SHELL_LAYOUT)) visit(child);
+    }
+  }
+  visit(host);
+  return nav;
+}
+
+function onSidebarMutations(records: MutationRecord[]): void {
+  if (settingsRoot?.isConnected && settingsRoot.matches(SETTINGS_DIALOG)) return;
+  reconcileNativeNav();
+  const pendingNav = nativeSettingsNav;
+  if (pendingNav && !state.navGroup?.isConnected && records.some(record => pendingNav.contains(record.target))) {
+    // Settings may populate its controls after mounting, even while rAF is paused.
+    tryInject();
+  }
+  for (const record of records) {
+    if (settingsRoot?.contains(record.target)) continue;
+    const nodes = record.type === "attributes" ? [record.target] : record.addedNodes;
+    for (const node of Array.from(nodes)) {
+      if (!(node instanceof HTMLElement) || !node.isConnected) continue;
+      const nav = node.matches(SETTINGS_NAV) ? node : node.firstElementChild && node.querySelector<HTMLElement>(SETTINGS_NAV);
+      if (nav && !isHiddenShellPage(nav)) {
+        observeRoutedSidebar(nav);
+        return;
+      }
+    }
   }
 }
 
@@ -357,7 +431,7 @@ function onNav(): void {
 }
 
 export function onSettingsNavigation(path: string): void {
-  if (!portalObserver || settingsRoot?.matches(SETTINGS_DIALOG)) return;
+  if (!layoutObserver || settingsRoot?.matches(SETTINGS_DIALOG)) return;
   if (isSettingsPath(path)) {
     if (settingsRoot?.isConnected) {
       pendingRouteContent = findContentArea() ?? settingsRoot;
@@ -389,7 +463,7 @@ function waitForRoutedSettings(): void {
 }
 
 function findRoutedSidebar(): HTMLElement | null {
-  const sidebar = document.querySelector<HTMLElement>(SETTINGS_NAV) ??
+  const sidebar = findMountedSettingsNav(document) ??
     findSidebarItemsGroup(document, "nav,aside,[role='navigation'],.overflow-y-auto");
   if (sidebar) return sidebar;
   // Some full-screen builds use only divs in the sidebar. Restrict that fallback
@@ -415,7 +489,17 @@ function observeRoutedSidebar(sidebar: HTMLElement): void {
   }
   const nav = sidebar.closest<HTMLElement>("nav,aside,[role='navigation']") ?? sidebar;
   const row = sidebar.closest<HTMLElement>("[data-app-shell-workspace-row]") ?? nav.parentElement;
-  observeSettingsRoot(row && row !== document.body && row !== document.documentElement ? row : nav);
+  const root = row && row !== document.body && row !== document.documentElement ? row : nav;
+  observeSettingsRoot(root, sidebar.matches(SETTINGS_NAV) ? sidebar : null);
+}
+
+function reconcileNativeNav(): boolean {
+  if (!nativeSettingsNav || (nativeSettingsNav.isConnected && settingsRoot?.contains(nativeSettingsNav) &&
+    nativeSettingsNav.matches(SETTINGS_NAV) && !isHiddenShellPage(nativeSettingsNav))) return false;
+  const replacement = settingsRoot?.isConnected && findMountedSettingsNav(settingsRoot);
+  if (replacement) observeRoutedSidebar(replacement);
+  else leaveRoutedRoot();
+  return true;
 }
 
 function leaveRoutedRoot(): void {
@@ -424,9 +508,15 @@ function leaveRoutedRoot(): void {
   if (resume) waitForRoutedSettings();
 }
 
-function observeSettingsRoot(root: HTMLElement | null): void {
+function observeSettingsRoot(root: HTMLElement | null, marker: HTMLElement | null = null): void {
   cancelRouteRetry();
-  if (settingsRoot === root) return;
+  if (settingsRoot === root) {
+    if (marker && nativeSettingsNav !== marker) {
+      nativeSettingsNav = marker;
+      tryInject();
+    }
+    return;
+  }
   pendingRouteContent = null;
   settingsObserver?.disconnect();
   settingsObserver = null;
@@ -443,6 +533,7 @@ function observeSettingsRoot(root: HTMLElement | null): void {
     setSettingsSurfaceVisible(false, "settings-closed");
   }
   settingsRoot = root;
+  nativeSettingsNav = marker;
   if (!root) return;
   settingsObserver = new MutationObserver((records) => {
     if (!window.document?.body || settingsRoot !== root) return;
@@ -450,6 +541,7 @@ function observeSettingsRoot(root: HTMLElement | null): void {
       if (root.matches(SETTINGS_DIALOG)) observeSettingsRoot(null);
       else leaveRoutedRoot();
     } else if (records.some((record) => root.contains(record.target))) {
+      if (reconcileNativeNav()) return;
       // Internal navigation can update the content in place instead of replacing
       // the row. A subsequent native Back then closes Settings without a URL change.
       const pending = pendingRouteContent;
@@ -587,7 +679,7 @@ function tryInject(): void {
   if (!settingsRoot) return;
   removeMisplacedSettingsGroups();
 
-  const itemsGroup = findSidebarItemsGroup();
+  const itemsGroup = findSidebarItemsGroup(nativeSettingsNav ?? settingsRoot);
   if (!itemsGroup) {
     // A memory-routed full-screen view can reuse its row for the chat on exit.
     if (state.settingsSurfaceVisible && !settingsRoot.matches(SETTINGS_DIALOG) &&
@@ -732,9 +824,11 @@ function syncNativeSettingsHeader(itemsGroup: HTMLElement, outer: HTMLElement): 
   if (outer === itemsGroup) return;
   if (hasNativeSettingsSectionHeaders(outer)) return;
 
+  const section = Array.from(outer.children).find(child => child.contains(itemsGroup));
+  if (!section) return;
   const header = sidebarGroupHeader("General");
   header.dataset.codexpp = "native-nav-header";
-  outer.insertBefore(header, itemsGroup);
+  outer.insertBefore(header, section);
   state.nativeNavHeader = header;
 }
 

@@ -3,6 +3,7 @@ export function compactSettingsText(value: string): string {
 }
 
 export function hasNativeSettingsSectionHeaders(root: HTMLElement): boolean {
+  if (root.querySelector('[class~="group/nav-section-title"]')) return true;
   const headings = new Set(["Personal", "Integrations", "Coding", "Archived"]);
   return Array.from(root.querySelectorAll<HTMLElement>("div,span")).some((el) => {
     if (el.dataset.codexpp) return false;

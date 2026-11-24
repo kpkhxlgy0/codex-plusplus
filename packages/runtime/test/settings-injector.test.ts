@@ -291,6 +291,226 @@ test("a chat link named Settings cannot start Settings detection", async () => {
   }
 });
 
+function createNativeSettingsShellFixture() {
+  const f = createInjectorFixture("", "modern");
+  const { document } = f.window;
+  f.window.history.replaceState({}, "", "/threads/current");
+  const settings = document.querySelector("section")!;
+  settings.querySelector("#sidebar")!.setAttribute("data-settings-nav-scroll-container", "");
+  const settingsFrame = document.createElement("div");
+  settingsFrame.setAttribute("data-app-shell-frame", "");
+  const workspace = document.createElement("div");
+  workspace.setAttribute("data-app-shell-workspace", "");
+  const aside = document.createElement("aside");
+  aside.setAttribute("data-app-shell-left-panel-appearance", "");
+  const slate = settings.querySelector("#left-panel")!;
+  slate.setAttribute("data-slate-sidebar-content", "");
+  slate.replaceWith(workspace);
+  workspace.append(aside);
+  aside.append(slate);
+
+  const root = document.createElement("div");
+  root.id = "root";
+  root.innerHTML = `<div data-app-shell-frame><section data-app-shell-workspace-row>
+    <div data-app-shell-workspace><aside data-app-shell-left-panel-appearance>
+      <div data-slate-sidebar-content><nav><button>New chat</button></nav></div>
+    </aside></div>
+    <main data-app-shell-main-surface="default"><article>Conversation</article></main>
+  </section></div>`;
+  const chatFrame = root.querySelector<HTMLDivElement>("[data-app-shell-frame]")!;
+  settings.replaceWith(root);
+  settingsFrame.append(settings);
+  return { ...f, root, chatFrame, settings, settingsFrame };
+}
+
+const settingsNavGroup = '[data-codexpp="nav-group"]';
+
+function assertSettingsNavigation(row: HTMLElement) {
+  assert.equal(row.querySelectorAll(settingsNavGroup).length, 1);
+  for (const tab of ["config", "tweaks", "tweak store"]) {
+    assert.equal(row.querySelectorAll(`[data-codexpp="nav-${tab}"]`).length, 1, tab);
+  }
+  assert.equal(row.ownerDocument.documentElement.dataset.codexppSettingsSurface, "true");
+}
+
+test("native full-screen Settings opens on frame swaps and late sidebar mounts", async () => {
+  const f = createNativeSettingsShellFixture();
+  try {
+    const { chatFrame, settings, settingsFrame } = f;
+    const { document } = f.window;
+    const reopenedSettings = settings.cloneNode(true) as HTMLElement;
+    const chatRow = chatFrame.firstElementChild!;
+    const message = chatRow.querySelector("article")!;
+    const takeReads = watchSettingsDomWork(f.window);
+
+    f.injector.startSettingsInjector();
+    await f.settle();
+    takeReads();
+
+    message.append(document.createElement("p"));
+    await f.settle();
+    assert.deepEqual(takeReads(), quietSettingsDomWork);
+
+    chatFrame.replaceWith(settingsFrame);
+    await f.settle();
+    assertSettingsNavigation(settings);
+
+    settingsFrame.replaceWith(chatFrame);
+    await f.settle();
+    assert.equal(settings.querySelector(settingsNavGroup), null);
+    assert.equal(document.documentElement.dataset.codexppSettingsSurface, "false");
+    takeReads();
+
+    message.firstElementChild!.append(document.createElement("span"));
+    message.setAttribute("aria-busy", "true");
+    await f.settle();
+    assert.deepEqual(takeReads(), quietSettingsDomWork);
+
+    const lateMounts = Array.from(reopenedSettings.querySelectorAll(
+      "[data-app-shell-workspace], [data-app-shell-left-panel-appearance], " +
+      "[data-slate-sidebar-content], [data-settings-nav-scroll-container]",
+    ), (element) => ({ parent: element.parentElement!, element }));
+    for (const { element } of lateMounts) element.remove();
+    chatRow.replaceWith(reopenedSettings);
+    await f.settle();
+    for (const { parent, element } of lateMounts) {
+      assert.equal(reopenedSettings.querySelector(settingsNavGroup), null);
+      parent.prepend(element);
+      await f.settle();
+    }
+    assertSettingsNavigation(reopenedSettings);
+    assert.equal(f.window.location.pathname, "/threads/current");
+    assert.equal(f.frames.size, 0);
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test("leaving an empty marked Settings sidebar releases observation of the reused chat row", async () => {
+  const f = createNativeSettingsShellFixture();
+  try {
+    const { chatFrame, settings, settingsFrame } = f;
+    const { document } = f.window;
+    const sidebar = settings.querySelector("#sidebar")!;
+    sidebar.replaceChildren();
+    const takeReads = watchSettingsDomWork(f.window);
+    f.injector.startSettingsInjector();
+    chatFrame.replaceWith(settingsFrame);
+    await f.settle();
+    assert.equal(settings.querySelector(settingsNavGroup), null);
+
+    const message = chatFrame.querySelector("article")!;
+    settings.querySelector("#main-content")!.replaceChildren(message);
+    sidebar.remove();
+    await f.settle();
+    assert.equal(settings.isConnected, true);
+    takeReads();
+
+    message.append(document.createElement("p"));
+    await f.settle();
+    assert.deepEqual(takeReads(), quietSettingsDomWork);
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+test("late controls in a marked Settings sidebar mount while animation frames are paused", async () => {
+  const f = createNativeSettingsShellFixture();
+  try {
+    const { chatFrame, settings, settingsFrame } = f;
+    const sidebar = settings.querySelector("#sidebar")!;
+    const controls = Array.from(sidebar.childNodes);
+    sidebar.replaceChildren();
+    f.injector.startSettingsInjector();
+    chatFrame.replaceWith(settingsFrame);
+    await new Promise<void>((done) => setImmediate(done));
+    assert.equal(settings.querySelector(settingsNavGroup), null);
+
+    // Flush only the mutation batch. A background Electron window can withhold RAF.
+    sidebar.append(...controls);
+    await new Promise<void>((done) => setImmediate(done));
+    assertSettingsNavigation(settings);
+  } finally {
+    f.dom.window.close();
+  }
+});
+
+for (const hiddenBy of ["hidden", "display:none"] as const) {
+  test(`retained full-screen Settings reopens after clearing ${hiddenBy}`, async () => {
+    const f = createNativeSettingsShellFixture();
+    try {
+      const { chatFrame, root, settings, settingsFrame } = f;
+      const { document } = f.window;
+      function setHidden(frame: HTMLDivElement, hidden: boolean) {
+        if (hiddenBy === "hidden") frame.hidden = hidden;
+        else frame.style.display = hidden ? "none" : "";
+      }
+
+      setHidden(settingsFrame, true);
+      root.prepend(settingsFrame);
+      const takeReads = watchSettingsDomWork(f.window);
+      f.injector.startSettingsInjector();
+      await f.settle();
+      assert.equal(settings.querySelector(settingsNavGroup), null);
+      assert.notEqual(document.documentElement.dataset.codexppSettingsSurface, "true");
+      assert.equal(takeReads().layoutReads, 0);
+
+      setHidden(chatFrame, true);
+      setHidden(settingsFrame, false);
+      await f.settle();
+      assertSettingsNavigation(settings);
+
+      setHidden(settingsFrame, true);
+      setHidden(chatFrame, false);
+      await f.settle();
+      assert.equal(settingsFrame.isConnected, true);
+      assert.equal(settings.querySelector(settingsNavGroup), null);
+      assert.equal(document.documentElement.dataset.codexppSettingsSurface, "false");
+      takeReads();
+      chatFrame.querySelector("article")!.append(document.createElement("p"));
+      await f.settle();
+      assert.deepEqual(takeReads(), quietSettingsDomWork);
+
+      setHidden(chatFrame, true);
+      setHidden(settingsFrame, false);
+      await f.settle();
+      assertSettingsNavigation(settings);
+      assert.equal(f.frames.size, 0);
+    } finally {
+      f.dom.window.close();
+    }
+  });
+}
+
+test("hiding a retained Settings page inside a reused row clears its surface until reopened", async () => {
+  const f = createNativeSettingsShellFixture();
+  try {
+    const { chatFrame, settings, settingsFrame } = f;
+    const { document } = f.window;
+    const page = document.createElement("div");
+    page.setAttribute("data-app-shell-active-page", "true");
+    const workspace = settings.querySelector("[data-app-shell-workspace]")!;
+    workspace.replaceWith(page);
+    page.append(workspace);
+    f.injector.startSettingsInjector();
+    chatFrame.replaceWith(settingsFrame);
+    await f.settle();
+    assertSettingsNavigation(settings);
+
+    page.hidden = true;
+    await f.settle();
+    assert.equal(settings.isConnected, true);
+    assert.equal(settings.querySelector(settingsNavGroup), null);
+    assert.equal(document.documentElement.dataset.codexppSettingsSurface, "false");
+
+    page.hidden = false;
+    await f.settle();
+    assertSettingsNavigation(settings);
+  } finally {
+    f.dom.window.close();
+  }
+});
+
 test("modern Config selection visibly replaces General and same-General click restores native styling", async () => {
   const f = createInjectorFixture("", "modern");
   try {
@@ -916,6 +1136,9 @@ test("a chat route cancels pending memory-routed Settings and leaves chat update
     takeReads();
 
     root.appendChild(delayedSettings);
+    await f.settle();
+    assert.deepEqual(takeReads(), { ...quietSettingsDomWork, observerCallbacks: 1 });
+
     root.querySelector("article")!.appendChild(document.createElement("p"));
     await f.settle();
     tickTimeouts();
@@ -1190,6 +1413,35 @@ test("nav group remount alone restores native content before another Config to G
     f.dom.window.close();
   }
 });
+
+for (const nativeHeading of [true, false]) {
+  test(`full-screen Settings mounts beside wrapped groups (native section title: ${nativeHeading})`, async () => {
+    const f = createInjectorFixture("", "modern");
+    try {
+      const doc = f.window.document;
+      const nav = doc.getElementById("sidebar")!;
+      nav.setAttribute("data-settings-nav-scroll-container", "true");
+      const wrapper = doc.createElement("div");
+      const items = nav.firstElementChild!;
+      items.id = "narrow-native";
+      nav.append(wrapper);
+      wrapper.append(items);
+      if (nativeHeading) {
+        const title = doc.createElement("div");
+        title.className = "group/nav-section-title";
+        title.textContent = "Coding";
+        wrapper.prepend(title);
+      }
+      f.injector.startSettingsInjector();
+      await f.settle();
+      assert.equal(doc.querySelector('[data-codexpp="nav-group"]')?.parentElement, nav);
+      const header = nav.querySelector('[data-codexpp="native-nav-header"]');
+      if (nativeHeading) assert.equal(header, null);
+      else assert.equal(header?.nextElementSibling, wrapper);
+      assert.equal(f.frames.size, 0);
+    } finally { f.dom.window.close(); }
+  });
+}
 
 test("settings injection settles without replacing groups in a fade-mask settings scroller", async () => {
   const f = createInjectorFixture();
